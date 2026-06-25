@@ -1,3 +1,5 @@
+import type { SignalResult } from "../../shared/src/types";
+
 export type {
   ContentIntent,
   EvidenceItem,
