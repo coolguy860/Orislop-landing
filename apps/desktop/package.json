@@ -1,0 +1,11 @@
+{
+  "name": "@orislop/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.ts",
+  "scripts": {
+    "dev": "electron electron/main.ts",
+    "check": "node tests/runDesktopChecks.mjs"
+  }
+}
