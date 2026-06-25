@@ -10,10 +10,13 @@ const api = {
   saveFeedback: (payload: unknown) => ipcRenderer.invoke("orislop:saveFeedback", payload),
   getCachedScore: (payload: unknown) => ipcRenderer.invoke("orislop:getCachedScore", payload),
   getCachedExtractedShort: (short: unknown) => ipcRenderer.invoke("orislop:getCachedScore", { short }),
+  scoreLookaheadCandidates: (payload: unknown) => ipcRenderer.invoke("orislop:scoreLookaheadCandidates", payload),
   clearCache: () => ipcRenderer.invoke("orislop:clearCache"),
   forceRescan: (payload: unknown) => ipcRenderer.invoke("orislop:forceRescan", payload),
   forceRescanExtractedShort: (short: unknown) => ipcRenderer.invoke("orislop:forceRescan", { short }),
-  getSkipHistory: () => ipcRenderer.invoke("orislop:getSkipHistory")
+  getSkipHistory: () => ipcRenderer.invoke("orislop:getSkipHistory"),
+  markScrolledBack: (payload: unknown) => ipcRenderer.invoke("orislop:markScrolledBack", payload),
+  markWatchedAnyway: (payload: unknown) => ipcRenderer.invoke("orislop:markWatchedAnyway", payload)
 };
 
 contextBridge.exposeInMainWorld("orislop", api);

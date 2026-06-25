@@ -11,9 +11,12 @@ const REQUIRED_IPC_CHANNELS = [
   "orislop:resetSettings",
   "orislop:saveFeedback",
   "orislop:getCachedScore",
+  "orislop:scoreLookaheadCandidates",
   "orislop:clearCache",
   "orislop:forceRescan",
-  "orislop:getSkipHistory"
+  "orislop:getSkipHistory",
+  "orislop:markScrolledBack",
+  "orislop:markWatchedAnyway"
 ];
 
 const tempRoot = await mkdtemp(join(tmpdir(), "orislop-desktop-"));
@@ -73,6 +76,11 @@ async function runDesktopChecks(storagePath) {
   });
   const cachedAfterWatchAnyway = await service.scoreShort({ fixtureId: normalFixture.id });
   assertEqual("non-preference feedback keeps cache usable", cachedAfterWatchAnyway.cacheHit, true);
+
+  const markScrolledBack = await service.markScrolledBack({ fixtureId: obviousFixture.id });
+  assert(markScrolledBack?.scrolledBack, "scroll-back marker updates skip history");
+  const markWatchedAnyway = await service.markWatchedAnyway({ fixtureId: obviousFixture.id });
+  assert(markWatchedAnyway?.watchedAnyway, "watch-anyway marker updates skip history");
 
   await service.clearCache();
   const afterClear = await service.getCachedScore({ fixtureId: obviousFixture.id });

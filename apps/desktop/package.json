@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "electron electron/main.ts",
     "check": "node tests/runDesktopChecks.mjs",
+    "check:lookahead": "node tests/runLookaheadChecks.mjs",
+    "check:skip": "node tests/runSkipControllerChecks.mjs",
     "check:youtube": "node tests/runYoutubeExtractorChecks.mjs"
   }
 }

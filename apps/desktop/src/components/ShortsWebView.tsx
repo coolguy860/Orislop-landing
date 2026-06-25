@@ -1,9 +1,11 @@
 import type { ExtractedShort } from "../../../../packages/shared/src/types.ts";
+import type { ScoredLookaheadCandidate } from "../youtube/lookaheadTypes.ts";
 
 export type ShortsWebViewState = {
   shortsUrl: string;
   extractedShort: ExtractedShort | null;
   webviewReady: boolean;
+  lookaheadResults: ScoredLookaheadCandidate[];
 };
 
 export function renderShortsWebView(state: ShortsWebViewState): string {
@@ -12,7 +14,7 @@ export function renderShortsWebView(state: ShortsWebViewState): string {
       <div class="panel__header">
         <div>
           <h2>YouTube Shorts</h2>
-          <p class="muted">Focused Shorts mode only. Live auto-scroll comes later.</p>
+          <p class="muted">Focused Shorts mode only. Auto-scroll follows your local settings.</p>
         </div>
         <button type="button" data-action="analyze-current-short">Analyze current Short</button>
       </div>
@@ -36,6 +38,17 @@ export function renderShortsWebView(state: ShortsWebViewState): string {
       <details class="extract-debug" ${state.extractedShort ? "open" : ""}>
         <summary>Extracted Short debug</summary>
         <pre>${escapeHtml(JSON.stringify(state.extractedShort, null, 2))}</pre>
+      </details>
+      <details class="extract-debug" ${state.lookaheadResults.length > 0 ? "open" : ""}>
+        <summary>Lookahead candidates (${state.lookaheadResults.length})</summary>
+        <ol class="lookahead-list">
+          ${state.lookaheadResults.map((item) => `
+            <li>
+              <strong>${escapeHtml(item.candidate.title ?? item.candidate.videoId ?? item.candidate.extractionId)}</strong>
+              <span>${escapeHtml(item.candidate.position)} - ${item.preSkip ? "pre_skip" : item.scoreResult.action} - ${item.cacheHit ? "cache" : "fresh"}</span>
+            </li>
+          `).join("") || "<li>No lookahead candidates scored.</li>"}
+        </ol>
       </details>
     </section>
   `;

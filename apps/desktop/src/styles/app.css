@@ -237,6 +237,41 @@ button:disabled {
   padding: 12px 24px;
 }
 
+.skipped-banner--warning {
+  background: #fff1c9;
+  border-bottom-color: #e2c66a;
+  color: #5d4300;
+}
+
+.skipped-banner--paused {
+  background: #e6edf5;
+  border-bottom-color: #b8c0cc;
+  color: #172026;
+}
+
+.flagged-banner {
+  align-items: center;
+  background: #fff1c9;
+  border-bottom: 1px solid #e2c66a;
+  color: #5d4300;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 24px;
+}
+
+.flagged-banner__copy {
+  display: grid;
+  gap: 4px;
+}
+
+.flagged-banner .flagged-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .settings-panel,
 .feedback-panel {
   align-self: start;
@@ -309,4 +344,17 @@ button:disabled {
   overflow: auto;
   padding: 10px;
   white-space: pre-wrap;
+}
+
+.lookahead-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.lookahead-list li span {
+  color: #536170;
+  display: block;
+  font-size: 13px;
 }

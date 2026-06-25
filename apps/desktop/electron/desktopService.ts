@@ -18,7 +18,19 @@ import type {
   UserFeedbackAction
 } from "../../../packages/storage/src/types.ts";
 import { MOCK_SHORT_FIXTURES, type MockShortFixture } from "../src/mockFixtures.ts";
-import type { FeedbackPayload, ScoreRequestPayload } from "./ipcValidation.ts";
+import type {
+  ScoredLookaheadCandidate,
+  ScoreLookaheadPayload
+} from "../src/youtube/lookaheadTypes.ts";
+import {
+  candidateToExtractedShort,
+  dedupeLookaheadCandidates,
+  limitLookaheadCandidates
+} from "../src/youtube/youtubeLookaheadScanner.ts";
+import type {
+  FeedbackPayload,
+  ScoreRequestPayload
+} from "./ipcValidation.ts";
 
 export type DesktopMockServiceOptions = {
   storagePath: string;
@@ -92,6 +104,16 @@ export function createDesktopMockService(options: DesktopMockServiceOptions) {
       });
     },
 
+    async scoreLookaheadCandidates(payload: ScoreLookaheadPayload): Promise<ScoredLookaheadCandidate[]> {
+      return scoreLookaheadWithStores(
+        payload,
+        settingsStore,
+        cacheStore,
+        feedbackStore,
+        channelPreferenceStore
+      );
+    },
+
     async saveFeedback(payload: FeedbackPayload): Promise<FeedbackResponse> {
       const short = payload.short ?? resolveShort(payload);
       const preferencesChanged = await applyFeedbackPreference(
@@ -123,8 +145,64 @@ export function createDesktopMockService(options: DesktopMockServiceOptions) {
 
     async getSkipHistory(): Promise<SkipHistoryRecord[]> {
       return skipHistoryStore.list();
+    },
+
+    async markScrolledBack(payload: ScoreRequestPayload): Promise<SkipHistoryRecord | null> {
+      return skipHistoryStore.markScrolledBack(resolveShort(payload));
+    },
+
+    async markWatchedAnyway(payload: ScoreRequestPayload): Promise<SkipHistoryRecord | null> {
+      return skipHistoryStore.markWatchedAnyway(resolveShort(payload));
     }
   };
+}
+
+async function scoreLookaheadWithStores(
+  payload: ScoreLookaheadPayload,
+  settingsStore: UserSettingsStore,
+  cacheStore: CacheStore,
+  feedbackStore: LocalFeedbackStore,
+  channelPreferenceStore: ChannelPreferenceStore
+): Promise<ScoredLookaheadCandidate[]> {
+  const settings = await settingsStore.load();
+  if (!settings.enableLookaheadScan || settings.lookaheadCount <= 0) {
+    return [];
+  }
+
+  const candidates = limitLookaheadCandidates(
+    dedupeLookaheadCandidates(payload.candidates),
+    settings.lookaheadCount
+  );
+  const scoreOptions: ScoreVideoOptions = {
+    userPreferences: await buildUserPreferenceRules(feedbackStore, channelPreferenceStore)
+  };
+  const scored: ScoredLookaheadCandidate[] = [];
+
+  for (const candidate of candidates) {
+    const short = candidateToExtractedShort(candidate);
+    const cached = await cacheStore.getScore(short, settings);
+    const baseResult = cached ?? scoreVideo(short, settings, scoreOptions);
+
+    if (!cached) {
+      await cacheStore.saveScore(baseResult, settings);
+    }
+
+    const preSkip = baseResult.action === "skip";
+    scored.push({
+      candidate,
+      short,
+      scoreResult: preSkip
+        ? {
+          ...baseResult,
+          action: "pre_skip"
+        }
+        : baseResult,
+      cacheHit: Boolean(cached),
+      preSkip
+    });
+  }
+
+  return scored;
 }
 
 async function scoreShortWithStores(
@@ -143,6 +221,7 @@ async function scoreShortWithStores(
   const cached = await cacheStore.getScore(short, settings);
 
   if (cached) {
+    await recordSkipResult(cached, short, skipHistoryStore);
     return {
       result: cached,
       cacheHit: true
@@ -154,7 +233,19 @@ async function scoreShortWithStores(
   };
   const result = scoreVideo(short, settings, scoreOptions);
   await cacheStore.saveScore(result, persistedSettings);
+  await recordSkipResult(result, short, skipHistoryStore);
 
+  return {
+    result,
+    cacheHit: false
+  };
+}
+
+async function recordSkipResult(
+  result: OrislopScoreResult,
+  short: ExtractedShort,
+  skipHistoryStore: SkipHistoryStore
+): Promise<void> {
   if (result.action === "skip" || result.action === "pre_skip") {
     await skipHistoryStore.recordSkip({
       videoId: short.videoId,
@@ -163,11 +254,6 @@ async function scoreShortWithStores(
       action: result.action
     });
   }
-
-  return {
-    result,
-    cacheHit: false
-  };
 }
 
 async function buildUserPreferenceRules(

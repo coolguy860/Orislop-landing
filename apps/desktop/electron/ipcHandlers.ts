@@ -1,6 +1,7 @@
 import type { DesktopMockService } from "./desktopService.ts";
 import {
   readFeedbackPayload,
+  readScoreLookaheadPayload,
   readScorePayload,
   readSettingsPatch
 } from "./ipcValidation.ts";
@@ -23,7 +24,10 @@ export function registerOrislopIpcHandlers(
   ipcMain.handle("orislop:resetSettings", () => service.resetSettings());
   ipcMain.handle("orislop:saveFeedback", (_event, payload) => service.saveFeedback(readFeedbackPayload(payload)));
   ipcMain.handle("orislop:getCachedScore", (_event, payload) => service.getCachedScore(readScorePayload(payload)));
+  ipcMain.handle("orislop:scoreLookaheadCandidates", (_event, payload) => service.scoreLookaheadCandidates(readScoreLookaheadPayload(payload)));
   ipcMain.handle("orislop:clearCache", () => service.clearCache());
   ipcMain.handle("orislop:forceRescan", (_event, payload) => service.forceRescan(readScorePayload(payload)));
   ipcMain.handle("orislop:getSkipHistory", () => service.getSkipHistory());
+  ipcMain.handle("orislop:markScrolledBack", (_event, payload) => service.markScrolledBack(readScorePayload(payload)));
+  ipcMain.handle("orislop:markWatchedAnyway", (_event, payload) => service.markWatchedAnyway(readScorePayload(payload)));
 }

@@ -21,6 +21,12 @@ export { metadataRulesSignal } from "./signals/metadataRulesSignal.ts";
 export { platformAiLabelSignal } from "./signals/platformAiLabelSignal.ts";
 export { transcriptRulesSignal } from "./signals/transcriptRulesSignal.ts";
 export { userPreferenceSignal } from "./signals/userPreferenceSignal.ts";
+export { embeddingSimilaritySignal } from "./signals/embeddingSimilaritySignal.ts";
+export { visualTemplateSignal } from "./signals/visualTemplateSignal.ts";
+export { ocrSignal } from "./signals/ocrSignal.ts";
+export { claimRiskSignal } from "./signals/claimRiskSignal.ts";
+export { existingAiDetectorSignal } from "./signals/existingAiDetectorSignal.ts";
+export { temporalDetectorSignal } from "./signals/temporalDetectorSignal.ts";
 export type {
   ContentIntent,
   EvidenceItem,

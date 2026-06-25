@@ -10,8 +10,11 @@
     "typecheck": "tsc --noEmit",
     "check": "tsc --noEmit",
     "desktop:dev": "electron apps/desktop/electron/main.ts",
+    "test:adapters": "node packages/local-inference/tests/runAdapterChecks.mjs",
     "test:desktop": "node apps/desktop/tests/runDesktopChecks.mjs",
     "test:fixtures": "node packages/slop-engine/tests/runFixtures.mjs",
+    "test:lookahead": "node apps/desktop/tests/runLookaheadChecks.mjs",
+    "test:skip": "node apps/desktop/tests/runSkipControllerChecks.mjs",
     "test:storage": "node packages/storage/tests/runStorageChecks.mjs",
     "test:youtube": "node apps/desktop/tests/runYoutubeExtractorChecks.mjs"
   }

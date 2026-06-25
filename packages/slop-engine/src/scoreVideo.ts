@@ -32,7 +32,8 @@ export function scoreVideo(
     platformAiLabelSignal(short, settings),
     metadataRulesSignal(short),
     transcriptRulesSignal(short),
-    contentIntentSignal(short)
+    contentIntentSignal(short),
+    ...(options.adapterSignals ?? [])
   ];
   const preliminary = fuseSignals(baseSignals, settings);
   const preferenceSignal = userPreferenceSignal(

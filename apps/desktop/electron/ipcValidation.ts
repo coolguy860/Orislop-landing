@@ -4,6 +4,11 @@ import type {
   OrislopSettings
 } from "../../../packages/shared/src/types.ts";
 import type { UserFeedbackAction } from "../../../packages/storage/src/types.ts";
+import type {
+  LookaheadPosition,
+  LookaheadShortCandidate,
+  ScoreLookaheadPayload
+} from "../src/youtube/lookaheadTypes.ts";
 
 export type ScoreRequestPayload = {
   fixtureId?: string;
@@ -26,6 +31,13 @@ const FEEDBACK_ACTIONS = new Set<UserFeedbackAction>([
   "always_block_format",
   "watch_anyway",
   "show_anyway"
+]);
+
+const LOOKAHEAD_POSITIONS = new Set<LookaheadPosition>([
+  "current",
+  "next",
+  "nearby",
+  "unknown"
 ]);
 
 export function readScorePayload(payload: unknown): ScoreRequestPayload {
@@ -85,6 +97,16 @@ export function readSettingsPatch(payload: unknown): Partial<OrislopSettings> {
   return patch;
 }
 
+export function readScoreLookaheadPayload(payload: unknown): ScoreLookaheadPayload {
+  if (!isRecord(payload) || !Array.isArray(payload.candidates)) {
+    throw new Error("Lookahead payload requires a candidates array.");
+  }
+
+  return {
+    candidates: payload.candidates.slice(0, 10).map(readLookaheadCandidate)
+  };
+}
+
 function readExtractedShort(value: unknown): ExtractedShort {
   if (!isRecord(value)) {
     throw new Error("short must be an object.");
@@ -111,6 +133,33 @@ function isScoreResult(value: unknown): value is OrislopScoreResult {
     && "action" in value
     && Array.isArray(value.evidence)
     && Array.isArray(value.categories);
+}
+
+function readLookaheadCandidate(value: unknown): LookaheadShortCandidate {
+  if (!isRecord(value)) {
+    throw new Error("Lookahead candidate must be an object.");
+  }
+
+  const position = value.position;
+  if (typeof position !== "string" || !LOOKAHEAD_POSITIONS.has(position as LookaheadPosition)) {
+    throw new Error("Lookahead candidate has invalid position.");
+  }
+
+  const confidence = typeof value.confidence === "number" && Number.isFinite(value.confidence)
+    ? Math.max(0, Math.min(1, value.confidence))
+    : 0;
+
+  return {
+    extractionId: requiredString(value.extractionId, "candidate.extractionId"),
+    url: nullableString(value.url, "candidate.url"),
+    videoId: nullableString(value.videoId, "candidate.videoId"),
+    title: nullableString(value.title, "candidate.title"),
+    channelName: nullableString(value.channelName, "candidate.channelName"),
+    channelUrl: nullableString(value.channelUrl, "candidate.channelUrl"),
+    visiblePageText: requiredString(value.visiblePageText, "candidate.visiblePageText"),
+    position: position as LookaheadPosition,
+    confidence
+  };
 }
 
 function requiredString(value: unknown, field: string): string {

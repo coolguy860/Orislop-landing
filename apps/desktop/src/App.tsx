@@ -5,15 +5,36 @@ import type {
 } from "../../../packages/shared/src/types.ts";
 import type { UserFeedbackAction } from "../../../packages/storage/src/types.ts";
 import { renderFeedbackPanel } from "./components/FeedbackPanel.tsx";
+import { renderFlaggedOnScrollBackBanner } from "./components/FlaggedOnScrollBackBanner.tsx";
 import { renderMockShortPanel } from "./components/MockShortPanel.tsx";
 import { renderOrislopOverlay } from "./components/OrislopOverlay.tsx";
 import { renderSettingsPanel } from "./components/SettingsPanel.tsx";
 import { renderShortsWebView } from "./components/ShortsWebView.tsx";
 import { renderSkippedBanner } from "./components/SkippedBanner.tsx";
 import type { MockShortFixture } from "./mockFixtures.ts";
+import type {
+  ScoredLookaheadCandidate,
+  ScoreLookaheadPayload
+} from "./youtube/lookaheadTypes.ts";
+import {
+  applyScrollAttemptResult,
+  createSkipSessionState,
+  decideSkipForCurrent,
+  rememberLookaheadPreSkips,
+  rememberWatchAnyway,
+  type FlaggedOnScrollBackBannerView,
+  type SkippedBannerView
+} from "./youtube/skipController.ts";
+import {
+  createScrollController,
+  type SafeScrollTarget
+} from "./youtube/scrollController.ts";
 import {
   attachShortsWebViewNavigationObserver
 } from "./youtube/youtubeNavigationObserver.ts";
+import {
+  getYouTubeLookaheadScannerScript
+} from "./youtube/youtubeLookaheadScanner.ts";
 import {
   getYouTubeShortsExtractorScript
 } from "./youtube/youtubeShortsExtractor.ts";
@@ -47,10 +68,13 @@ type OrislopApi = {
   }) => Promise<unknown>;
   getCachedScore: (payload: ScorePayload) => Promise<OrislopScoreResult | null>;
   getCachedExtractedShort: (short: ExtractedShort) => Promise<OrislopScoreResult | null>;
+  scoreLookaheadCandidates: (payload: ScoreLookaheadPayload) => Promise<ScoredLookaheadCandidate[]>;
   clearCache: () => Promise<unknown>;
   forceRescan: (payload: ScorePayload) => Promise<ScoreShortResponse>;
   forceRescanExtractedShort: (short: ExtractedShort) => Promise<ScoreShortResponse>;
   getSkipHistory: () => Promise<unknown[]>;
+  markScrolledBack: (payload: ScorePayload) => Promise<unknown>;
+  markWatchedAnyway: (payload: ScorePayload) => Promise<unknown>;
 };
 
 declare global {
@@ -67,11 +91,14 @@ type AppState = {
   selectedFixtureId: string | null;
   settings: OrislopSettings | null;
   scoreResponse: ScoreShortResponse | null;
+  skipBanner: SkippedBannerView | null;
+  flaggedBanner: FlaggedOnScrollBackBannerView | null;
   bannerDismissed: boolean;
   status: string;
   skipHistoryCount: number;
   shortsUrl: string;
   extractedShort: ExtractedShort | null;
+  lookaheadResults: ScoredLookaheadCandidate[];
 };
 
 const state: AppState = {
@@ -80,14 +107,19 @@ const state: AppState = {
   selectedFixtureId: null,
   settings: null,
   scoreResponse: null,
+  skipBanner: null,
+  flaggedBanner: null,
   bannerDismissed: false,
   status: "Loading mock fixtures.",
   skipHistoryCount: 0,
   shortsUrl: YOUTUBE_SHORTS_HOME_URL,
-  extractedShort: null
+  extractedShort: null,
+  lookaheadResults: []
 };
 
 let detachShortsObserver: (() => void) | null = null;
+const skipSession = createSkipSessionState();
+const scrollController = createScrollController();
 const root = document.getElementById("app");
 
 bootstrap().catch((error: unknown) => {
@@ -122,7 +154,8 @@ function render(): void {
         <span class="app-status">${escapeHtml(state.status)}</span>
       </header>
 
-      ${renderSkippedBanner(result, state.bannerDismissed)}
+      ${renderSkippedBanner(state.skipBanner ?? result, state.bannerDismissed)}
+      ${renderFlaggedOnScrollBackBanner(state.flaggedBanner)}
 
       <section class="toolbar" aria-label="Fixture and Shorts controls">
         <button type="button" data-action="open-mock-mode" ${state.mode === "mock" ? "disabled" : ""}>Mock fixtures</button>
@@ -138,7 +171,8 @@ function render(): void {
           : renderShortsWebView({
             shortsUrl: state.shortsUrl,
             extractedShort: state.extractedShort,
-            webviewReady: true
+            webviewReady: true,
+            lookaheadResults: state.lookaheadResults
           })}
         ${renderOrislopOverlay(result, Boolean(state.scoreResponse?.cacheHit))}
         ${renderSettingsPanel(state.settings)}
@@ -179,6 +213,9 @@ function bindEvents(): void {
     state.mode = "mock";
     state.scoreResponse = null;
     state.extractedShort = null;
+    state.lookaheadResults = [];
+    state.skipBanner = null;
+    state.flaggedBanner = null;
     state.bannerDismissed = false;
     state.status = "Mock fixture mode.";
     render();
@@ -187,7 +224,10 @@ function bindEvents(): void {
   document.querySelector("[data-action='open-youtube-mode']")?.addEventListener("click", () => {
     state.mode = "youtube";
     state.scoreResponse = null;
+    state.skipBanner = null;
+    state.flaggedBanner = null;
     state.bannerDismissed = false;
+    state.lookaheadResults = [];
     state.status = "YouTube Shorts mode.";
     render();
   });
@@ -196,6 +236,8 @@ function bindEvents(): void {
     const target = event.target as HTMLSelectElement;
     state.selectedFixtureId = target.value;
     state.scoreResponse = null;
+    state.skipBanner = null;
+    state.flaggedBanner = null;
     state.bannerDismissed = false;
     state.status = "Fixture selected.";
     render();
@@ -220,6 +262,9 @@ function bindEvents(): void {
   });
   document.querySelector("[data-action='reset-settings']")?.addEventListener("click", async () => {
     state.settings = await window.orislop.resetSettings();
+    state.scoreResponse = null;
+    state.skipBanner = null;
+    state.flaggedBanner = null;
     state.status = "Settings reset.";
     render();
   });
@@ -253,6 +298,9 @@ async function scoreSelected(forceRescan: boolean): Promise<void> {
   state.scoreResponse = forceRescan
     ? await window.orislop.forceRescan({ fixtureId: state.selectedFixtureId })
     : await window.orislop.scoreShort({ fixtureId: state.selectedFixtureId });
+  state.lookaheadResults = [];
+  state.skipBanner = null;
+  state.flaggedBanner = null;
   state.skipHistoryCount = (await window.orislop.getSkipHistory()).length;
   state.bannerDismissed = false;
   state.status = state.scoreResponse.cacheHit ? "Loaded cached score." : "Scored fixture.";
@@ -264,6 +312,7 @@ async function analyzeCurrentShort(forceRescan: boolean): Promise<void> {
     return;
   }
 
+  const previousLookaheadResults = state.lookaheadResults;
   const webview = document.getElementById("shorts-webview") as unknown as {
     executeJavaScript?: (script: string, userGesture?: boolean) => Promise<ExtractedShort>;
     getURL?: () => string;
@@ -279,14 +328,59 @@ async function analyzeCurrentShort(forceRescan: boolean): Promise<void> {
     state.scoreResponse = forceRescan
       ? await window.orislop.forceRescanExtractedShort(extracted)
       : await window.orislop.scoreExtractedShort(extracted);
-    state.skipHistoryCount = (await window.orislop.getSkipHistory()).length;
+    state.skipBanner = null;
+    state.flaggedBanner = null;
     state.bannerDismissed = false;
     state.status = state.scoreResponse.cacheHit ? "Loaded cached extracted Short." : "Analyzed current Short.";
+    rememberLookaheadPreSkips(skipSession, previousLookaheadResults);
+    await applySkipControl(extracted, state.scoreResponse.result);
+    state.lookaheadResults = await scanLookaheadCandidates();
+    rememberLookaheadPreSkips(skipSession, state.lookaheadResults);
+    state.skipHistoryCount = (await window.orislop.getSkipHistory()).length;
   } catch (error) {
     state.status = error instanceof Error ? error.message : "Unable to analyze current Short.";
   }
 
   render();
+}
+
+async function applySkipControl(
+  short: ExtractedShort,
+  result: OrislopScoreResult
+): Promise<void> {
+  if (!state.settings) {
+    return;
+  }
+
+  const decision = decideSkipForCurrent({
+    short,
+    result,
+    settings: state.settings,
+    session: skipSession
+  });
+
+  state.skipBanner = decision.skippedBanner;
+  state.flaggedBanner = decision.flaggedBanner;
+
+  if (decision.flaggedBanner) {
+    await window.orislop.markScrolledBack({ short }).catch(() => undefined);
+    state.status = "Returned to a flagged Short.";
+    return;
+  }
+
+  if (!decision.shouldAttemptScroll || state.mode !== "youtube") {
+    if (decision.pauseAutoSkipping) {
+      state.status = "Auto-skipping paused.";
+    }
+    return;
+  }
+
+  const webview = document.getElementById("shorts-webview") as unknown as SafeScrollTarget | null;
+  const scrollOutcome = await scrollController.attemptNextShort(webview);
+  state.skipBanner = applyScrollAttemptResult(skipSession, decision, scrollOutcome);
+  state.status = scrollOutcome.succeeded
+    ? "Skipped current Short."
+    : "Could not auto-scroll; showing a warning.";
 }
 
 function openShortsUrl(): void {
@@ -302,6 +396,9 @@ function openShortsUrl(): void {
   state.shortsUrl = parsed.normalizedUrl;
   state.extractedShort = null;
   state.scoreResponse = null;
+  state.lookaheadResults = [];
+  state.skipBanner = null;
+  state.flaggedBanner = null;
   state.bannerDismissed = false;
   state.status = parsed.videoId ? "Shorts URL loaded." : "Shorts home loaded.";
   render();
@@ -328,6 +425,30 @@ function bindShortsObserver(): void {
   });
 }
 
+async function scanLookaheadCandidates(): Promise<ScoredLookaheadCandidate[]> {
+  if (!state.settings?.enableLookaheadScan || state.settings.lookaheadCount <= 0) {
+    return [];
+  }
+
+  const webview = document.getElementById("shorts-webview") as unknown as {
+    executeJavaScript?: (script: string, userGesture?: boolean) => Promise<ScoreLookaheadPayload["candidates"]>;
+  } | null;
+
+  if (!webview?.executeJavaScript) {
+    return [];
+  }
+
+  try {
+    const candidates = await webview.executeJavaScript(
+      getYouTubeLookaheadScannerScript(state.settings.lookaheadCount),
+      true
+    );
+    return window.orislop.scoreLookaheadCandidates({ candidates });
+  } catch {
+    return [];
+  }
+}
+
 async function updateSetting(target: HTMLInputElement | HTMLSelectElement): Promise<void> {
   const key = target.dataset.setting;
   if (!key) {
@@ -339,6 +460,8 @@ async function updateSetting(target: HTMLInputElement | HTMLSelectElement): Prom
     : target.value;
   state.settings = await window.orislop.updateSettings({ [key]: value });
   state.scoreResponse = null;
+  state.skipBanner = null;
+  state.flaggedBanner = null;
   state.status = "Settings saved.";
   render();
 }
@@ -360,14 +483,28 @@ async function saveFeedback(userFeedback: UserFeedbackAction): Promise<void> {
       scoreResult: state.scoreResponse.result,
       userFeedback
     });
+
+    if (keepsCurrentShortVisible(userFeedback)) {
+      rememberWatchAnyway(skipSession, state.extractedShort);
+      await window.orislop.markWatchedAnyway({ short: state.extractedShort }).catch(() => undefined);
+      state.skipBanner = null;
+      state.flaggedBanner = null;
+    }
   }
 
-  if (userFeedback === "watch_anyway" || userFeedback === "show_anyway") {
+  if (keepsCurrentShortVisible(userFeedback)) {
     state.bannerDismissed = true;
   }
 
   state.status = "Feedback saved locally.";
   render();
+}
+
+function keepsCurrentShortVisible(userFeedback: UserFeedbackAction): boolean {
+  return userFeedback === "watch_anyway"
+    || userFeedback === "show_anyway"
+    || userFeedback === "not_slop"
+    || userFeedback === "always_allow_channel";
 }
 
 function fallbackExtractedShort(url: string): ExtractedShort {

@@ -28,5 +28,6 @@ export type UserPreferenceRules = {
 
 export type ScoreVideoOptions = {
   userPreferences?: UserPreferenceRules;
+  adapterSignals?: SignalResult[];
   createdAt?: string;
 };
