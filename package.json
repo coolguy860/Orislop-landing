@@ -12,6 +12,7 @@
     "desktop:dev": "electron apps/desktop/electron/main.ts",
     "test:desktop": "node apps/desktop/tests/runDesktopChecks.mjs",
     "test:fixtures": "node packages/slop-engine/tests/runFixtures.mjs",
-    "test:storage": "node packages/storage/tests/runStorageChecks.mjs"
+    "test:storage": "node packages/storage/tests/runStorageChecks.mjs",
+    "test:youtube": "node apps/desktop/tests/runYoutubeExtractorChecks.mjs"
   }
 }

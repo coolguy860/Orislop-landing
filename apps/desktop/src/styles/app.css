@@ -92,6 +92,10 @@ button:disabled {
   padding: 18px 24px 28px;
 }
 
+.content-grid--youtube {
+  grid-template-columns: minmax(520px, 1.25fr) minmax(360px, 0.85fr);
+}
+
 .panel,
 .mock-short {
   background: #ffffff;
@@ -259,4 +263,50 @@ button:disabled {
 
 .muted {
   color: #536170;
+}
+
+.toolbar-note {
+  color: #536170;
+  font-size: 13px;
+}
+
+.shorts-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.shorts-controls {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(260px, 1fr) auto;
+}
+
+.shorts-controls input {
+  border: 1px solid #b8c0cc;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.shorts-webview {
+  background: #111820;
+  border: 1px solid #27313b;
+  border-radius: 8px;
+  height: 560px;
+  width: 100%;
+}
+
+.extract-debug {
+  border-top: 1px solid #edf0f4;
+  color: #536170;
+  padding-top: 8px;
+}
+
+.extract-debug pre {
+  background: #f6f7f9;
+  border-radius: 6px;
+  color: #172026;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
 }

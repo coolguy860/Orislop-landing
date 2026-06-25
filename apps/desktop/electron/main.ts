@@ -22,10 +22,12 @@ function createWindow(): BrowserWindow {
       preload: join(currentDir, "preload.ts"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      webviewTag: true
     }
   });
 
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.loadFile(join(currentDir, "../src/index.html"));
   return window;
 }

@@ -6,6 +6,7 @@
   "main": "electron/main.ts",
   "scripts": {
     "dev": "electron electron/main.ts",
-    "check": "node tests/runDesktopChecks.mjs"
+    "check": "node tests/runDesktopChecks.mjs",
+    "check:youtube": "node tests/runYoutubeExtractorChecks.mjs"
   }
 }
