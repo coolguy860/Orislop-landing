@@ -1,0 +1,14 @@
+{
+  "name": "orislop-browser-mvp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit",
+    "test:fixtures": "node packages/slop-engine/tests/runFixtures.mjs"
+  }
+}
