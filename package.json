@@ -9,6 +9,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "check": "tsc --noEmit",
-    "test:fixtures": "node packages/slop-engine/tests/runFixtures.mjs"
+    "test:fixtures": "node packages/slop-engine/tests/runFixtures.mjs",
+    "test:storage": "node packages/storage/tests/runStorageChecks.mjs"
   }
 }

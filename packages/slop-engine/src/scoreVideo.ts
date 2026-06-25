@@ -46,7 +46,7 @@ export function scoreVideo(
   const fused = fuseSignals(signals, settings);
   const contentIntent = inferContentIntent(short);
   const thresholds = getThresholds(settings.strictness);
-  const preferenceOverride = getPreferenceOverride(signals);
+  const preferenceOverride = getPreferenceOverride(signals, fused.categories, settings);
   const protectedFromClaimOnlySkip = shouldProtectFromClaimOnlySkip(
     contentIntent,
     fused.categories,
@@ -125,12 +125,18 @@ export function actionAllowsAutoScroll(action: OrislopAction): boolean {
 }
 
 function getPreferenceOverride(
-  signals: SignalResult[]
+  signals: SignalResult[],
+  categories: string[],
+  settings: OrislopSettings
 ): "allow" | "block" | null {
   const preferenceSignal = signals.find((signal) => signal.name === "user_preference");
   const reasonIds = preferenceSignal?.evidence.map((item) => item.reasonId) ?? [];
 
   if (reasonIds.some((reasonId) => reasonId.includes("always_allow"))) {
+    if (hasStrictHighRiskChannelAllowException(categories, settings)) {
+      return null;
+    }
+
     return "allow";
   }
 
@@ -139,6 +145,21 @@ function getPreferenceOverride(
   }
 
   return null;
+}
+
+function hasStrictHighRiskChannelAllowException(
+  categories: string[],
+  settings: OrislopSettings
+): boolean {
+  const exceptions: Array<[string, keyof OrislopSettings]> = [
+    ["scammy", "skipScamFinance"],
+    ["scam_finance", "skipScamFinance"],
+    ["risky_educational", "skipHighRiskUnsupportedClaims"],
+    ["miracle_health_claim", "skipMiracleHealthClaims"],
+    ["high_risk_unsupported_claim", "skipHighRiskUnsupportedClaims"]
+  ];
+
+  return exceptions.some(([category, setting]) => categories.includes(category) && settings[setting] === true);
 }
 
 function actionFromPreferenceOrProbability(
