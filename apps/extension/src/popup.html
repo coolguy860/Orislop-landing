@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Orislop</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header class="popup-header">
+        <span class="popup-brand"><i aria-hidden="true">O</i>Orislop</span>
+        <span class="popup-model-status"><i aria-hidden="true"></i>Local AI active</span>
+      </header>
+      <h1>Clean YouTube mode</h1>
+      <p class="intro">Score visible YouTube items locally, keep useful videos, and act only through the controls you choose.</p>
+      <p id="contextWarning" class="context-warning" hidden>
+        Preview mode: this popup is not running inside Chrome extension context, so YouTube scanning is unavailable and settings are stored in this page only.
+        To test the real extension, load the unpacked <code>apps/extension/dist</code> folder in Chrome or Edge. If <code>chrome://extensions</code> is blocked by policy, use an unrestricted browser profile or wait for a store-published build.
+      </p>
+      <div class="metric-grid">
+        <div class="metric">
+          <span>Flagged locally</span>
+          <strong id="flaggedCount">0</strong>
+        </div>
+        <div class="metric">
+          <span>Skipped/hidden</span>
+          <strong id="skippedCount">0</strong>
+        </div>
+      </div>
+      <label class="toggle-row">
+        <input id="autoSkipToggle" type="checkbox" role="switch" aria-label="Automatically move past Skip-rated current Shorts and watch videos" aria-checked="false" />
+        <span>
+          Auto-skip current Skip-rated videos
+          <small>Off by default. Questionable videos are never auto-skipped.</small>
+        </span>
+      </label>
+      <label class="toggle-row">
+        <input id="hideFeedCardsToggle" type="checkbox" role="switch" aria-label="Hide Skip-rated videos in YouTube lists and feeds" aria-checked="false" />
+        <span>
+          Hide Skip-rated feed cards
+          <small>Removes visible recommendations before you click them.</small>
+        </span>
+      </label>
+      <label class="toggle-row">
+        <input id="hideBotCommentsToggle" type="checkbox" role="switch" aria-label="Hide likely bot comments" aria-checked="false" />
+        <span>
+          Hide likely bot comments
+          <small>Off by default. Detects strong spam and scam patterns locally.</small>
+        </span>
+      </label>
+      <label class="toggle-row">
+        <input id="advancedDetectionToggle" type="checkbox" role="switch" aria-label="Enable advanced detector escalation flag" aria-checked="false" />
+        <span>
+          Advanced detector escalation
+          <small>Off by default. Marks eligible items for a future local companion; no heavy model runs here.</small>
+        </span>
+      </label>
+      <details class="info-disclosure">
+        <summary>How verdicts work</summary>
+        <div>
+          <span>Questionable: marked for review and never auto-skipped.</span>
+          <span>Skip: hidden or moved past only when its matching switch is on.</span>
+          <span>AI/synthetic disclosures affect scoring but never override your switches.</span>
+        </div>
+      </details>
+      <details class="info-disclosure">
+        <summary>Detector status</summary>
+        <div>
+          <span>Browser AI text rules active</span>
+          <span>Orislop AI Classifier v1: local TF-IDF logistic metadata model active</span>
+          <span>Spatial: orislop-fusion (companion required)</span>
+          <span>Temporal: deepfake-temporal-moe (companion required)</span>
+        </div>
+      </details>
+      <section>
+        <div class="section-header">
+          <strong>Recently skipped or hidden</strong>
+          <button id="clearSkippedButton" type="button">Clear skipped</button>
+        </div>
+        <div id="skippedList" class="skipped-list"></div>
+      </section>
+      <section>
+        <div class="section-header">
+          <strong>Recently flagged</strong>
+          <button id="clearLogButton" type="button">Clear flagged</button>
+        </div>
+        <div id="flaggedList" class="skipped-list"></div>
+      </section>
+      <button id="clearAllDataButton" type="button">Clear all local Orislop data</button>
+      <section id="clearConfirmation" class="clear-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="clearConfirmationText" hidden>
+        <strong id="clearConfirmationText">Clear local data?</strong>
+        <span>This cannot be undone.</span>
+        <div>
+          <button id="confirmClearButton" type="button">Confirm clear</button>
+          <button id="cancelClearButton" type="button">Cancel</button>
+        </div>
+      </section>
+      <p id="popupStatus" class="popup-status" role="status" aria-live="polite" aria-atomic="true"></p>
+      <p class="note">No API keys. No video downloads. Logs/settings stay in local browser extension storage.</p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

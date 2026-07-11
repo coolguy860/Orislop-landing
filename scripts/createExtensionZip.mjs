@@ -1,0 +1,44 @@
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createZipFromDirectoryContents, readZipEntries } from "./lib/zip.mjs";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const extensionDist = path.join(repoRoot, "apps", "extension", "dist");
+const rootDist = path.join(repoRoot, "dist");
+const zipPath = path.join(rootDist, "orislop-browser-extension.zip");
+const manifestPath = path.join(extensionDist, "manifest.json");
+
+if (!existsSync(manifestPath)) {
+  throw new Error("apps/extension/dist/manifest.json is missing. Run pnpm run extension:build first.");
+}
+
+mkdirSync(rootDist, { recursive: true });
+rmSync(zipPath, { force: true });
+createZipFromDirectoryContents(extensionDist, zipPath);
+
+const entries = readZipEntries(zipPath);
+const requiredEntries = [
+  "manifest.json",
+  "aiClassifierModel.generated.js",
+  "background.js",
+  "contentScript.js",
+  "contentStyles.css",
+  "popup.html",
+  "popup.css",
+  "popup.js",
+  "release-info.json",
+  "icons/icon16.svg",
+  "icons/icon32.svg",
+  "icons/icon48.svg",
+  "icons/icon128.svg",
+  "icons/icon256.svg"
+];
+
+for (const requiredEntry of requiredEntries) {
+  if (!entries.includes(requiredEntry)) {
+    throw new Error(`Extension ZIP must contain ${requiredEntry}.`);
+  }
+}
+
+console.log(`Browser extension ZIP ready: ${zipPath}`);

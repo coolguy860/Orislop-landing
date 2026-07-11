@@ -1,0 +1,243 @@
+.orislop-hidden-card {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(7, 10, 15, 0.98)) !important;
+  border: 1px solid rgba(251, 113, 133, 0.45) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32) !important;
+  color: #edf3f8 !important;
+  display: grid !important;
+  gap: 10px !important;
+  margin: 8px 0 !important;
+  min-height: 96px !important;
+  padding: 14px !important;
+}
+
+.orislop-hidden-card * {
+  box-sizing: border-box !important;
+}
+
+.orislop-hidden-card__top {
+  align-items: center !important;
+  display: flex !important;
+  gap: 8px !important;
+  justify-content: space-between !important;
+}
+
+.orislop-hidden-card__badge {
+  background: rgba(251, 113, 133, 0.16) !important;
+  border: 1px solid rgba(251, 113, 133, 0.38) !important;
+  border-radius: 999px !important;
+  color: #ffd5dc !important;
+  font: 800 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  letter-spacing: 0 !important;
+  padding: 6px 8px !important;
+  text-transform: uppercase !important;
+}
+
+.orislop-hidden-card__score {
+  color: #fda4af !important;
+  font: 900 13px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.orislop-hidden-card__title {
+  color: #edf3f8 !important;
+  font: 800 15px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  margin: 0 !important;
+}
+
+.orislop-hidden-card__reason {
+  color: #a8b4c4 !important;
+  font: 500 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  margin: 0 !important;
+}
+
+.orislop-hidden-card__actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+.orislop-hidden-card button {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 8px !important;
+  color: #edf3f8 !important;
+  cursor: pointer !important;
+  font: 800 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  padding: 8px 10px !important;
+}
+
+.orislop-hidden-card button:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.orislop-hidden-card button:focus-visible,
+.orislop-hidden-comment button:focus-visible,
+.orislop-callout-card button:focus-visible,
+.orislop-current-skip-shield button:focus-visible {
+  outline: 3px solid rgba(125, 211, 252, 0.92) !important;
+  outline-offset: 2px !important;
+}
+
+.orislop-hidden-comment {
+  background: rgba(7, 10, 15, 0.96) !important;
+  border: 1px solid rgba(125, 211, 252, 0.3) !important;
+  border-radius: 10px !important;
+  color: #d6f3ff !important;
+  display: grid !important;
+  gap: 7px !important;
+  margin: 8px 0 !important;
+  padding: 11px 12px !important;
+}
+
+.orislop-hidden-comment strong {
+  color: #d6f3ff !important;
+  font: 900 13px/1.25 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.orislop-hidden-comment span,
+.orislop-hidden-comment p {
+  color: #a8c3d3 !important;
+  font: 650 12px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  margin: 0 !important;
+}
+
+.orislop-hidden-comment button {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 8px !important;
+  color: #d6f3ff !important;
+  cursor: pointer !important;
+  font: 850 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  justify-self: start !important;
+  padding: 7px 9px !important;
+}
+
+.orislop-flagged-outline {
+  outline: 2px solid rgba(250, 204, 21, 0.62) !important;
+  outline-offset: 3px !important;
+}
+
+.orislop-side-callout-host {
+  position: relative !important;
+}
+
+.orislop-callout-card {
+  align-items: start !important;
+  background: linear-gradient(180deg, rgba(250, 204, 21, 0.16), rgba(17, 24, 39, 0.96)) !important;
+  border: 1px solid rgba(250, 204, 21, 0.46) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34) !important;
+  color: #fff8c5 !important;
+  display: grid !important;
+  gap: 8px !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  margin: 0 !important;
+  max-width: min(260px, calc(100% - 16px)) !important;
+  padding: 10px !important;
+  pointer-events: auto !important;
+  position: absolute !important;
+  right: 8px !important;
+  top: 8px !important;
+  width: 240px !important;
+  z-index: 2147483600 !important;
+}
+
+.orislop-callout-card strong {
+  color: #fff8c5 !important;
+  font: 900 13px/1.25 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.orislop-callout-card span {
+  color: #d8c970 !important;
+  font: 700 12px/1.3 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.orislop-callout-card button {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 8px !important;
+  color: #fff8c5 !important;
+  cursor: pointer !important;
+  font: 900 12px/1.1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  justify-self: start !important;
+  padding: 7px 9px !important;
+}
+
+.orislop-autoskip-toast {
+  background: linear-gradient(180deg, rgba(251, 113, 133, 0.18), rgba(8, 10, 13, 0.94)) !important;
+  border: 1px solid rgba(251, 113, 133, 0.42) !important;
+  border-radius: 12px !important;
+  bottom: 64px !important;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38) !important;
+  color: #ffe2e7 !important;
+  font: 900 13px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  left: 18px !important;
+  max-width: min(420px, calc(100vw - 36px)) !important;
+  padding: 12px 14px !important;
+  position: fixed !important;
+  z-index: 2147483647 !important;
+}
+
+.orislop-current-skip-shield {
+  align-content: center !important;
+  background:
+    radial-gradient(circle at top left, rgba(251, 113, 133, 0.24), transparent 34%) !important,
+    linear-gradient(180deg, rgba(3, 7, 12, 0.96), rgba(8, 10, 13, 0.985)) !important;
+  border: 1px solid rgba(251, 113, 133, 0.42) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.58) !important;
+  color: #f8eef1 !important;
+  display: grid !important;
+  gap: 10px !important;
+  left: 50% !important;
+  max-width: min(520px, calc(100vw - 32px)) !important;
+  min-height: 210px !important;
+  padding: 20px !important;
+  pointer-events: auto !important;
+  position: fixed !important;
+  text-align: left !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: min(520px, calc(100vw - 32px)) !important;
+  z-index: 2147483647 !important;
+}
+
+.orislop-current-skip-shield * {
+  box-sizing: border-box !important;
+}
+
+.orislop-current-skip-shield__badge {
+  background: rgba(251, 113, 133, 0.18) !important;
+  border: 1px solid rgba(251, 113, 133, 0.4) !important;
+  border-radius: 999px !important;
+  color: #ffd5dc !important;
+  display: inline-flex !important;
+  font: 900 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  justify-self: start !important;
+  padding: 7px 9px !important;
+  text-transform: uppercase !important;
+}
+
+.orislop-current-skip-shield strong {
+  color: #fff7f9 !important;
+  font: 950 20px/1.24 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.orislop-current-skip-shield p,
+.orislop-current-skip-shield small {
+  color: #d9b8c0 !important;
+  font: 700 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  margin: 0 !important;
+}
+
+.orislop-current-skip-shield button {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 9px !important;
+  color: #fff7f9 !important;
+  cursor: pointer !important;
+  font: 900 13px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  justify-self: start !important;
+  margin-top: 6px !important;
+  padding: 9px 11px !important;
+}

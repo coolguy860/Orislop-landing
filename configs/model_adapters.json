@@ -45,6 +45,8 @@
       "kind": "existing_ai_detector",
       "enabled": false,
       "mode": "subprocess",
+      "hfRepoId": null,
+      "localModelDirectory": null,
       "scriptPath": null,
       "modelPath": null,
       "checkpointPath": null,
@@ -55,16 +57,20 @@
       "kind": "spatial_detector",
       "enabled": false,
       "mode": "subprocess",
+      "hfRepoId": "orislop-fusion",
+      "localModelDirectory": null,
       "scriptPath": "core/spatial.py",
       "modelPath": null,
       "checkpointPath": null,
-      "notes": "Optional wrapper for core/spatial.py. Do not import at startup; may load HF models if run directly."
+      "notes": "Optional wrapper for core/spatial.py / orislop-fusion. Disabled by default; no automatic downloads or startup imports."
     },
     "temporal_detector": {
       "id": "temporal_detector",
       "kind": "temporal_detector",
       "enabled": false,
       "mode": "subprocess",
+      "hfRepoId": "deepfake-temporal-moe",
+      "localModelDirectory": null,
       "detectorRoot": null,
       "scriptPath": null,
       "checkpointPath": null,
@@ -75,7 +81,18 @@
         "final_pipeline_core.py",
         "full_pipeline_utils.py"
       ],
-      "notes": "Optional wrapper for the Phase 1 temporal detector. Configure paths locally; missing checkpoints must return unavailable."
+      "notes": "Optional wrapper for the Phase 1 temporal detector / deepfake-temporal-moe. Configure paths locally; missing checkpoints must return unavailable."
+    },
+    "fusion_detector": {
+      "id": "fusion_detector",
+      "kind": "fusion_detector",
+      "enabled": false,
+      "mode": "disabled",
+      "hfRepoId": "orislop-fusion",
+      "localModelDirectory": null,
+      "modelPath": null,
+      "checkpointPath": null,
+      "notes": "Optional future fusion model wrapper. Configure full Hugging Face repo ID locally; no automatic downloads."
     }
   }
 }

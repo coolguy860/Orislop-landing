@@ -11,7 +11,8 @@ export type AdapterKind =
   | "whisper"
   | "existing_ai_detector"
   | "spatial_detector"
-  | "temporal_detector";
+  | "temporal_detector"
+  | "fusion_detector";
 
 export type AdapterMode =
   | "disabled"
@@ -34,6 +35,8 @@ export type AdapterConfig = {
   pythonPath?: string | null;
   timeoutMs?: number;
   notes?: string;
+  hfRepoId?: string | null;
+  localModelDirectory?: string | null;
 };
 
 export type ModelAdaptersConfig = {

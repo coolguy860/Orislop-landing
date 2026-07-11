@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, session, type WebContents } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createDesktopMockService } from "./desktopService.ts";
@@ -19,20 +19,96 @@ function createWindow(): BrowserWindow {
     title: "Orislop Browser",
     backgroundColor: "#f6f7f9",
     webPreferences: {
-      preload: join(currentDir, "preload.ts"),
+      preload: join(currentDir, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      webviewTag: true
+      webviewTag: true,
+      navigateOnDragDrop: false
     }
   });
 
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  window.loadFile(join(currentDir, "../src/index.html"));
+  window.webContents.on("will-navigate", (event, url) => {
+    if (!isTrustedRendererUrl(url)) {
+      event.preventDefault();
+    }
+  });
+  window.webContents.on("will-redirect", (event, url) => {
+    if (!isTrustedRendererUrl(url)) {
+      event.preventDefault();
+    }
+  });
+  window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+    if (!isAllowedInitialWebViewSrc(params.src)) {
+      event.preventDefault();
+      return;
+    }
+
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    webPreferences.navigateOnDragDrop = false;
+    webPreferences.webSecurity = true;
+    webPreferences.partition = "persist:orislop-youtube-shorts";
+  });
+  window.webContents.on("did-attach-webview", (_event, guestWebContents) => {
+    secureGuestWebContents(guestWebContents);
+  });
+  if (!app.isPackaged && process.env.ORISLOP_OPEN_DEVTOOLS !== "0") {
+    window.webContents.openDevTools({ mode: "detach" });
+  }
+  window.loadFile(join(currentDir, "../index.html"));
   return window;
 }
 
+function secureGuestWebContents(guestWebContents: WebContents): void {
+  guestWebContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  guestWebContents.on("will-navigate", (event, url) => {
+    if (!isAllowedYouTubeGuestUrl(url)) {
+      event.preventDefault();
+    }
+  });
+  guestWebContents.on("will-redirect", (event, url) => {
+    if (!isAllowedYouTubeGuestUrl(url)) {
+      event.preventDefault();
+    }
+  });
+}
+
+function isTrustedRendererUrl(input: string): boolean {
+  try {
+    return new URL(input).protocol === "file:";
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedInitialWebViewSrc(input: string | undefined): boolean {
+  return !input || input === "about:blank" || isAllowedYouTubeGuestUrl(input);
+}
+
+function isAllowedYouTubeGuestUrl(input: string): boolean {
+  try {
+    const url = new URL(input);
+    return url.protocol === "https:" && ALLOWED_YOUTUBE_GUEST_HOSTS.has(url.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+const ALLOWED_YOUTUBE_GUEST_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "consent.youtube.com",
+  "accounts.google.com"
+]);
+
 app.whenReady().then(() => {
+  configureYouTubeCompatibleUserAgent();
+  configureYouTubePartitionPermissions();
   const service = createDesktopMockService({
     storagePath: storagePath()
   });
@@ -45,6 +121,18 @@ app.whenReady().then(() => {
     }
   });
 });
+
+function configureYouTubePartitionPermissions(): void {
+  const youtubeSession = session.fromPartition("persist:orislop-youtube-shorts");
+  youtubeSession.setPermissionCheckHandler(() => false);
+  youtubeSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+}
+
+function configureYouTubeCompatibleUserAgent(): void {
+  app.userAgentFallback = app.userAgentFallback
+    .replace(/\sElectron\/\S+/i, "")
+    .replace(/\sOrislop\/\S+/i, "");
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

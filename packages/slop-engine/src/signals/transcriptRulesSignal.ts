@@ -3,6 +3,13 @@ import type { EvidenceItem, ExtractedShort, SignalResult } from "../../../shared
 import { CLAIM_RISK_TERMS, CONSPIRACY_FRAMING_TERMS } from "../rules/claimRiskTerms.ts";
 import { SCAM_TERMS } from "../rules/scamTerms.ts";
 import { SERIOUS_CLAIM_TERMS } from "../rules/seriousClaimTerms.ts";
+import {
+  collectLowInformationMatches,
+  collectStrongSlopPatternMatches,
+  hasInformationalContext,
+  hasSongOrLyricsContext,
+  type SlopPatternMatch
+} from "../rules/slopPatterns.ts";
 
 type Hit = {
   reasonId: string;
@@ -36,12 +43,30 @@ export function transcriptRulesSignal(short: ExtractedShort): SignalResult {
   const words = text.match(/[a-z0-9']+/g) ?? [];
   const uniqueRatio = words.length === 0 ? 1 : new Set(words).size / words.length;
 
-  if (words.length >= 30 && uniqueRatio < 0.34) {
-    hits.push(makeHit("transcript_low_information_density", "Low information density", "Transcript repeats a small set of words.", "low_information", 0.55));
+  const songContext = hasSongOrLyricsContext([
+    short.title,
+    short.description,
+    short.audioTrackTitle,
+    short.hashtags.join(" "),
+    transcript
+  ].filter(Boolean).join(" "));
+  const informationalContext = hasInformationalContext([
+    short.title,
+    short.description,
+    short.visiblePageText,
+    transcript
+  ].filter(Boolean).join(" "));
+  const repetitionCategory = informationalContext ? "low_information" : "repetitive_format";
+  const repetitionLabel = informationalContext
+    ? "Low-information informational format"
+    : "Repetitive low-originality format";
+
+  if (!songContext && words.length >= 30 && uniqueRatio < 0.34) {
+    hits.push(makeHit("transcript_low_information_density", repetitionLabel, "Transcript repeats a small set of words.", repetitionCategory, informationalContext ? 0.55 : 0.48));
   }
 
   if (/\b(um+|uh+|like like|you know you know|so basically so basically)\b/i.test(transcript)) {
-    hits.push(makeHit("transcript_repeated_filler", "Repeated filler", "Transcript contains repeated filler phrases.", "low_information", 0.5));
+    hits.push(makeHit("transcript_repeated_filler", "Repeated filler", "Transcript contains repeated filler phrases.", repetitionCategory, informationalContext ? 0.5 : 0.42));
   }
 
   if (/\b(aita|ask reddit|subreddit|r\/|upvote|tifu|relationship advice)\b/i.test(transcript)) {
@@ -56,13 +81,24 @@ export function transcriptRulesSignal(short: ExtractedShort): SignalResult {
     hits.push(makeHit("transcript_fake_text_story_pattern", "Fake text story pattern", "Transcript is formatted like a staged text conversation.", "fake_text_story", 0.66));
   }
 
+  collectSlopPatternHits(transcript, "transcript", hits, songContext);
   collectPhraseHits(text, SCAM_TERMS, "scammy", "Possible scam language", 0.82, hits);
   collectPhraseHits(text, CLAIM_RISK_TERMS, "unsupported_claims", "Unsupported absolute claim", 0.75, hits);
   collectPhraseHits(text, CONSPIRACY_FRAMING_TERMS, "unsupported_claims", "Conspiracy framing", 0.68, hits);
   collectPhraseHits(text, SERIOUS_CLAIM_TERMS, "serious_claim", "Serious factual claim", 0.45, hits);
 
-  if (/\b(cures|miracle cure|doctors hate|never eat this|detox)\b/i.test(transcript)) {
-    hits.push(makeHit("transcript_miracle_health_claim", "Miracle health claim", "Transcript contains high-risk health advice wording.", "risky_educational", 0.82));
+  if (hasHighRiskFinancePattern(transcript)) {
+    hits.push(makeHit(
+      "transcript_high_risk_finance_claim",
+      "High-risk unsupported finance claim",
+      "Transcript uses guaranteed-return or copy-trading language.",
+      "scam_finance",
+      0.86
+    ));
+  }
+
+  if (/\b(cures|miracle cure|doctors hate|never eat this|detox)\b/i.test(transcript) || hasHighRiskHealthPattern(transcript)) {
+    hits.push(makeHit("transcript_miracle_health_claim", "High-risk unsupported finance/health claim", "Transcript contains high-risk health advice wording.", "miracle_health_claim", 0.84));
   }
 
   if (hits.length === 0) {
@@ -107,6 +143,32 @@ function collectPhraseHits(
   }
 }
 
+function collectSlopPatternHits(text: string, prefix: string, hits: Hit[], songContext: boolean): void {
+  const informationalContext = hasInformationalContext(text);
+  for (const match of [
+    ...collectStrongSlopPatternMatches(text, prefix),
+    ...(songContext ? [] : collectLowInformationMatches(text, prefix, {
+      category: informationalContext ? "low_information" : "repetitive_format",
+      label: informationalContext
+        ? "Low-information informational format"
+        : "Repetitive low-originality format"
+    }))
+  ]) {
+    hits.push(hitFromPatternMatch(match));
+  }
+}
+
+function hitFromPatternMatch(match: SlopPatternMatch): Hit {
+  return {
+    reasonId: match.reasonId,
+    label: match.label,
+    detail: match.detail,
+    weight: match.weight,
+    confidence: match.confidence,
+    category: match.category
+  };
+}
+
 function makeHit(reasonId: string, label: string, detail: string, category: string, weight: number): Hit {
   return {
     reasonId,
@@ -138,8 +200,19 @@ function evidenceFromHits(hits: Hit[]): EvidenceItem[] {
     detail: hit.detail,
     weight: hit.weight,
     confidence: hit.confidence,
-    source: "transcript"
+    source: "transcript",
+    category: hit.category
   }));
+}
+
+function hasHighRiskFinancePattern(text: string): boolean {
+  return /\b(?:guaranteed|risk[-\s]?free|100%\s+win|copy\s+my\s+trades|signals?|telegram|whatsapp|dm\s+me)\b/i.test(text)
+    && /\b(?:crypto|forex|stock|trading|profit|returns?|passive\s+income|course|mentorship)\b/i.test(text);
+}
+
+function hasHighRiskHealthPattern(text: string): boolean {
+  return /\b(?:miracle|cure|detox|doctors?\s+hate|never\s+eat|big\s+pharma|weight\s+loss|supplement)\b/i.test(text)
+    && /\b(?:health|doctor|disease|cancer|diabetes|fat|body|symptom|eat|cures?)\b/i.test(text);
 }
 
 function slug(value: string): string {

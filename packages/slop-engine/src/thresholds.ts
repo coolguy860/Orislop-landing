@@ -1,4 +1,5 @@
 import type { OrislopAction, OrislopSettings } from "../../shared/src/types.ts";
+import { getStrictnessProfile, STRICTNESS_PROFILES } from "./calibration/strictnessProfiles.ts";
 
 export type Strictness = OrislopSettings["strictness"];
 
@@ -9,25 +10,14 @@ export type StrictnessThresholds = {
 };
 
 export const STRICTNESS_THRESHOLDS: Record<Strictness, StrictnessThresholds> = {
-  lenient: {
-    allowBelow: 0.45,
-    warnAt: 0.45,
-    skipAt: 0.7
-  },
-  medium: {
-    allowBelow: 0.35,
-    warnAt: 0.35,
-    skipAt: 0.6
-  },
-  strict: {
-    allowBelow: 0.25,
-    warnAt: 0.25,
-    skipAt: 0.5
-  }
+  lenient: pickThresholds(STRICTNESS_PROFILES.lenient),
+  balanced: pickThresholds(STRICTNESS_PROFILES.balanced),
+  strict: pickThresholds(STRICTNESS_PROFILES.strict),
+  nuclear: pickThresholds(STRICTNESS_PROFILES.nuclear)
 };
 
-export function getThresholds(strictness: Strictness): StrictnessThresholds {
-  return STRICTNESS_THRESHOLDS[strictness] ?? STRICTNESS_THRESHOLDS.medium;
+export function getThresholds(strictness: Strictness | "medium" | unknown): StrictnessThresholds {
+  return pickThresholds(getStrictnessProfile(strictness));
 }
 
 export function actionFromProbability(
@@ -49,4 +39,12 @@ export function actionFromProbability(
   }
 
   return "skip";
+}
+
+function pickThresholds(profile: StrictnessThresholds): StrictnessThresholds {
+  return {
+    allowBelow: profile.allowBelow,
+    warnAt: profile.warnAt,
+    skipAt: profile.skipAt
+  };
 }

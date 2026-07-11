@@ -13,7 +13,7 @@ const INTENT_PATTERNS: Array<[ContentIntent, RegExp]> = [
   ["news_current_events", /\b(breaking|news|today|current events|update)\b/i],
   ["science_claim", /\b(study|scientists|researchers|climate|physics|biology)\b/i],
   ["history_claim", /\b(history|historian|ancient|century|war)\b/i],
-  ["scam_promo", /\b(guaranteed profit|limited spots|dm me|telegram|whatsapp|course)\b/i],
+  ["scam_promo", /\b(guaranteed profit|guaranteed returns|limited spots|dm me|telegram|whatsapp|copy my trades|forex signals|crypto signals|make money fast|fake guru|mentorship)\b/i],
   ["serious_education", /\b(tutorial|explained|lesson|learn|education|guide)\b/i],
   ["normal_entertainment", /\b(dance|music|vlog|gameplay|reaction|challenge)\b/i]
 ];

@@ -5,6 +5,7 @@ import { scoreVideo } from "../../slop-engine/src/scoreVideo.ts";
 import {
   CacheStore,
   ChannelPreferenceStore,
+  LocalOriginalityStore,
   LocalFeedbackStore,
   SkipHistoryStore,
   UserSettingsStore
@@ -39,7 +40,7 @@ async function runStorageChecks(basePath) {
   const repairedShape = await settingsStore.loadWithRepairStatus();
   assertEqual("invalid settings repaired flag", repairedShape.repaired, true);
   assertEqual("invalid settings repaired autoSkip", repairedShape.settings.autoSkip, true);
-  assertEqual("invalid settings repaired strictness", repairedShape.settings.strictness, "medium");
+  assertEqual("invalid settings repaired strictness", repairedShape.settings.strictness, "balanced");
 
   await writeFile(settingsPath, "{not-json", "utf8");
   const repairedMalformed = await settingsStore.loadWithRepairStatus();
@@ -65,10 +66,35 @@ async function runStorageChecks(basePath) {
   });
   assertEqual("feedback saves locally", (await feedbackStore.list()).length, 1);
 
+  const originalityStore = new LocalOriginalityStore({ basePath, vectorDimensions: 32 });
+  await originalityStore.upsert({
+    ...obviousSlop,
+    videoId: "original-viral-clip",
+    url: "https://www.youtube.com/shorts/original-viral-clip",
+    title: "AI voice viral clips compilation",
+    visiblePageText: "ai voice compilation viral clips source unknown"
+  });
+  const originalityMatches = await originalityStore.findSimilar({
+    ...obviousSlop,
+    videoId: "reposted-viral-clip",
+    url: "https://www.youtube.com/shorts/reposted-viral-clip",
+    title: "AI voice viral clips compilation repost",
+    visiblePageText: "ai voice compilation viral clips source unknown not mine"
+  }, {
+    minSimilarity: 0.5
+  });
+  assertEqual("local originality index finds similar metadata", originalityMatches.length > 0, true);
+  assertEqual("local originality index stores compact records", (await originalityStore.list()).length, 1);
+
   const cacheStore = new CacheStore({ basePath });
-  await cacheStore.saveScore(slopScore, settings);
+  await cacheStore.saveScore(slopScore, settings, obviousSlop);
   const cached = await cacheStore.getScore(obviousSlop, settings);
   assertEqual("cache retrieves score", cached?.url, obviousSlop.url);
+  const staleMetadata = await cacheStore.getScore({
+    ...obviousSlop,
+    title: "Metadata changed after YouTube hydrated the card"
+  }, settings);
+  assertEqual("cache invalidates when extracted metadata changes", staleMetadata, null);
   const bypassed = await cacheStore.getScore(obviousSlop, {
     ...settings,
     forceRescan: true

@@ -2,13 +2,22 @@ import type { SignalResult } from "../../shared/src/types";
 
 export type {
   ContentIntent,
+  CalibrationUserLabel,
+  CommunityKeywordCategory,
+  CommunityReactionStrength,
+  CommunityReactionSummary,
+  DeepScanStatus,
   EvidenceItem,
   ExtractedShort,
   OrislopAction,
   OrislopScoreResult,
   OrislopSettings,
   SignalResult,
-  SkipMode
+  SkipMode,
+  SourceVerificationSummary,
+  StrictnessProfile,
+  VerificationStatus,
+  YouTubeVideoKind
 } from "../../shared/src/types.ts";
 
 export type ScoreBreakdown = {
@@ -16,6 +25,7 @@ export type ScoreBreakdown = {
   claimRiskScore: number;
   aiGeneratedScore: number | null;
   possibleUnlabeledAiScore: number | null;
+  originalityRiskScore: number | null;
   skipProbability: number;
   confidence: number;
   categories: string[];

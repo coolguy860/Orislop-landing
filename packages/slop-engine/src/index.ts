@@ -7,6 +7,27 @@ export {
   getThresholds
 } from "./thresholds.ts";
 export {
+  STRICTNESS_PROFILES,
+  applyProfileMultiplier,
+  categoryMultiplierForProfile,
+  getStrictnessProfile
+} from "./calibration/strictnessProfiles.ts";
+export {
+  evaluateCalibrationRecords,
+  formatCalibrationReport
+} from "./calibration/evaluateCalibration.ts";
+export {
+  chooseDeepScanPolicyFromBenchmarks,
+  deepScanStatusForScore,
+  isSuspiciousEnoughForDeepScan
+} from "./deepScan/deepScanPolicy.ts";
+export {
+  buildVerificationQuery,
+  shouldAutoVerifyClaim,
+  sourceVerificationSummaryForScore,
+  summarizeMockSourceResults
+} from "./verification/sourceVerification.ts";
+export {
   comedySatireScore,
   factualIntentScore,
   inferContentIntent,
@@ -17,6 +38,7 @@ export {
   userFacingReasonForCategory
 } from "./policy/defaultPolicy.ts";
 export { contentIntentSignal } from "./signals/contentIntentSignal.ts";
+export { communityReactionSignal } from "./signals/communityReactionSignal.ts";
 export { metadataRulesSignal } from "./signals/metadataRulesSignal.ts";
 export { platformAiLabelSignal } from "./signals/platformAiLabelSignal.ts";
 export { transcriptRulesSignal } from "./signals/transcriptRulesSignal.ts";
@@ -26,6 +48,7 @@ export { visualTemplateSignal } from "./signals/visualTemplateSignal.ts";
 export { ocrSignal } from "./signals/ocrSignal.ts";
 export { claimRiskSignal } from "./signals/claimRiskSignal.ts";
 export { existingAiDetectorSignal } from "./signals/existingAiDetectorSignal.ts";
+export { localOriginalitySignal } from "./signals/localOriginalitySignal.ts";
 export { temporalDetectorSignal } from "./signals/temporalDetectorSignal.ts";
 export type {
   ContentIntent,

@@ -3,6 +3,14 @@ import type { EvidenceItem, ExtractedShort, SignalResult } from "../../../shared
 import { BAIT_PHRASES, FAKE_URGENCY_PHRASES } from "../rules/baitPhrases.ts";
 import { CLAIM_RISK_TERMS, CONSPIRACY_FRAMING_TERMS } from "../rules/claimRiskTerms.ts";
 import { SCAM_TERMS } from "../rules/scamTerms.ts";
+import {
+  collectLowInformationMatches,
+  collectStrongSlopPatternMatches,
+  hasInformationalContext,
+  hasSongOrLyricsContext,
+  titleHashtagSpamMatch,
+  type SlopPatternMatch
+} from "../rules/slopPatterns.ts";
 import { LOW_INFORMATION_TERMS, TEMPLATE_TERMS } from "../rules/templateTerms.ts";
 
 type Hit = {
@@ -26,6 +34,31 @@ export function metadataRulesSignal(short: ExtractedShort): SignalResult {
   collectPhraseHits(text, SCAM_TERMS, "scammy", "Possible scam language", 0.8, hits);
   collectPhraseHits(text, CLAIM_RISK_TERMS, "unsupported_claims", "Unsupported claim language", 0.72, hits);
   collectPhraseHits(text, CONSPIRACY_FRAMING_TERMS, "unsupported_claims", "Conspiracy framing", 0.68, hits);
+  collectSlopPatternHits(text, "metadata", hits, short);
+  const titleSpam = titleHashtagSpamMatch(short.title, "metadata");
+  if (titleSpam) {
+    hits.push(hitFromPatternMatch(titleSpam));
+  }
+
+  if (hasHighRiskFinancePattern(text)) {
+    hits.push(makeHit(
+      "metadata_high_risk_finance_claim",
+      "High-risk unsupported finance claim",
+      "Metadata uses guaranteed-return or copy-trading language.",
+      "scam_finance",
+      0.84
+    ));
+  }
+
+  if (hasHighRiskHealthPattern(text)) {
+    hits.push(makeHit(
+      "metadata_high_risk_health_claim",
+      "High-risk unsupported finance/health claim",
+      "Metadata uses miracle-cure or urgent health-advice wording.",
+      "miracle_health_claim",
+      0.84
+    ));
+  }
 
   if (/[!?]{3,}/.test(text)) {
     hits.push(makeHit("metadata_excessive_punctuation", "Excessive punctuation", "Repeated punctuation appears in metadata.", "engagement_bait", 0.46));
@@ -95,6 +128,46 @@ function collectPhraseHits(
   }
 }
 
+function collectSlopPatternHits(
+  text: string,
+  prefix: string,
+  hits: Hit[],
+  short: ExtractedShort
+): void {
+  const songContext = short.audioIsSong === true || hasSongOrLyricsContext(text);
+  const informationalContext = hasInformationalContext(text);
+  const repetitionMatches = songContext
+    ? []
+    : collectLowInformationMatches(text, prefix, {
+      category: informationalContext ? "low_information" : "repetitive_format",
+      label: informationalContext
+        ? "Low-information informational format"
+        : "Repetitive low-originality format"
+    });
+
+  for (const match of [
+    ...collectStrongSlopPatternMatches(text, prefix),
+    ...repetitionMatches
+  ]) {
+    if (short.hasPlatformAiLabel && match.category === "possible_unlabeled_ai") {
+      continue;
+    }
+
+    hits.push(hitFromPatternMatch(match));
+  }
+}
+
+function hitFromPatternMatch(match: SlopPatternMatch): Hit {
+  return {
+    reasonId: match.reasonId,
+    label: match.label,
+    detail: match.detail,
+    weight: match.weight,
+    confidence: match.confidence,
+    category: match.category
+  };
+}
+
 function makeHit(reasonId: string, label: string, detail: string, category: string, weight: number): Hit {
   return {
     reasonId,
@@ -126,7 +199,8 @@ function evidenceFromHits(hits: Hit[], source: string): EvidenceItem[] {
     detail: hit.detail,
     weight: hit.weight,
     confidence: hit.confidence,
-    source
+    source,
+    category: hit.category
   }));
 }
 
@@ -137,6 +211,16 @@ function emojiCount(text: string): number {
 function hasAllCapsSpam(text: string): boolean {
   const words = text.split(/\s+/).filter((word) => /^[A-Z]{4,}$/.test(word));
   return words.length >= 3;
+}
+
+function hasHighRiskFinancePattern(text: string): boolean {
+  return /\b(?:guaranteed|risk[-\s]?free|100%\s+win|copy\s+my\s+trades|signals?|telegram|whatsapp|dm\s+me)\b/i.test(text)
+    && /\b(?:crypto|forex|stock|trading|profit|returns?|passive\s+income|course|mentorship)\b/i.test(text);
+}
+
+function hasHighRiskHealthPattern(text: string): boolean {
+  return /\b(?:miracle|cure|detox|doctors?\s+hate|never\s+eat|big\s+pharma|weight\s+loss|supplement)\b/i.test(text)
+    && /\b(?:health|doctor|disease|cancer|diabetes|fat|body|symptom|eat|cures?)\b/i.test(text);
 }
 
 function slug(value: string): string {

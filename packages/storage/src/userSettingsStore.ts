@@ -16,7 +16,11 @@ const BOOLEAN_SETTING_KEYS: Array<keyof OrislopSettings> = [
   "allowScrollBack",
   "showSkippedBanner",
   "showFlaggedBannerOnScrollBack",
+  "hideFlaggedCurrentVideo",
+  "observePlaybackBeforeScoring",
   "enableLookaheadScan",
+  "hideFlaggedRecommendations",
+  "enableLocalOriginalityIndex",
   "skipAllAiLabeled",
   "skipPossibleUnlabeledAi",
   "skipUsefulAiExplainers",
@@ -27,7 +31,10 @@ const BOOLEAN_SETTING_KEYS: Array<keyof OrislopSettings> = [
   "skipRedditTtsStories",
   "skipFakeTextStories",
   "skipLowInformation",
+  "skipRepetitiveFormats",
   "skipRepostLike",
+  "skipGreenScreenReactions",
+  "skipLowOriginalityReposts",
   "skipScamFinance",
   "skipMiracleHealthClaims",
   "skipHighRiskUnsupportedClaims",
@@ -41,6 +48,12 @@ const BOOLEAN_SETTING_KEYS: Array<keyof OrislopSettings> = [
   "enableWhisper",
   "enableExistingAiDetector",
   "enableTemporalDetector",
+  "enableSpatialDetector",
+  "enableFusionDetector",
+  "enableClaimVerification",
+  "autoVerifyHighRiskClaims",
+  "useCommunityReactionSignal",
+  "showRawDebugSignals",
   "forceRescan"
 ];
 
@@ -53,8 +66,16 @@ const SKIP_MODES: SkipMode[] = [
 
 const STRICTNESS_VALUES: Array<OrislopSettings["strictness"]> = [
   "lenient",
-  "medium",
-  "strict"
+  "balanced",
+  "strict",
+  "nuclear"
+];
+
+const DEEP_SCAN_POLICIES: Array<OrislopSettings["deepScanPolicy"]> = [
+  "manual_only",
+  "suspicious_only",
+  "fast_detector_all",
+  "all_videos"
 ];
 
 export class UserSettingsStore {
@@ -132,6 +153,13 @@ export function repairSettings(value: unknown): OrislopSettings {
   const strictness = raw.strictness;
   if (typeof strictness === "string" && STRICTNESS_VALUES.includes(strictness as OrislopSettings["strictness"])) {
     repaired.strictness = strictness;
+  } else if (strictness === "medium") {
+    repaired.strictness = "balanced";
+  }
+
+  const deepScanPolicy = raw.deepScanPolicy;
+  if (typeof deepScanPolicy === "string" && DEEP_SCAN_POLICIES.includes(deepScanPolicy as OrislopSettings["deepScanPolicy"])) {
+    repaired.deepScanPolicy = deepScanPolicy;
   }
 
   if (typeof raw.maxConsecutiveSkips === "number" && Number.isFinite(raw.maxConsecutiveSkips)) {
@@ -140,6 +168,18 @@ export function repairSettings(value: unknown): OrislopSettings {
 
   if (typeof raw.lookaheadCount === "number" && Number.isFinite(raw.lookaheadCount)) {
     repaired.lookaheadCount = Math.round(clamp(raw.lookaheadCount, 0, 10));
+  }
+
+  if (typeof raw.communitySignalWeight === "number" && Number.isFinite(raw.communitySignalWeight)) {
+    repaired.communitySignalWeight = clamp(raw.communitySignalWeight, 0, 1);
+  }
+
+  if (typeof raw.maxVisibleCommentsToInspect === "number" && Number.isFinite(raw.maxVisibleCommentsToInspect)) {
+    repaired.maxVisibleCommentsToInspect = Math.round(clamp(raw.maxVisibleCommentsToInspect, 0, 50));
+  }
+
+  if (typeof raw.deepScanMaxRuntimeMs === "number" && Number.isFinite(raw.deepScanMaxRuntimeMs)) {
+    repaired.deepScanMaxRuntimeMs = Math.round(clamp(raw.deepScanMaxRuntimeMs, 250, 30000));
   }
 
   return repaired as OrislopSettings;

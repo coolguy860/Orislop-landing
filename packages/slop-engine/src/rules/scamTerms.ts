@@ -11,5 +11,9 @@ export const SCAM_TERMS = [
   "limited spots",
   "passive income secret",
   "make money fast",
-  "financial freedom in 30 days"
+  "financial freedom in 30 days",
+  "fake guru",
+  "get rich quick",
+  "secret mentorship",
+  "join my paid group"
 ] as const;

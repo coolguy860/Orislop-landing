@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="img" aria-label="Orislop">
+  <rect width="48" height="48" rx="12" fill="#08111d"/>
+  <path d="M8 24C8 14.2 14.2 8 24 8s16 6.2 16 16-6.2 16-16 16S8 33.8 8 24Z" fill="#0ea5e9"/>
+  <path d="M14 24c0-6.3 3.7-10 10-10s10 3.7 10 10-3.7 10-10 10-10-3.7-10-10Z" fill="#0f172a"/>
+  <path d="m18.2 24.4 4 4.5 8-10.1" fill="none" stroke="#4ade80" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M35.2 12.8 40 8M12.8 35.2 8 40" stroke="#fb7185" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

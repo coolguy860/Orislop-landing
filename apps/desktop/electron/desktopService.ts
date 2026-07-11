@@ -1,4 +1,17 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  createExistingAiDetectorAdapter,
+  createSpatialDetectorAdapter,
+  createTemporalDetectorAdapter,
+  type AdapterConfig,
+  type ModelAdaptersConfig
+} from "../../../packages/local-inference/src/index.ts";
 import { scoreVideo } from "../../../packages/slop-engine/src/scoreVideo.ts";
+import { existingAiDetectorSignal } from "../../../packages/slop-engine/src/signals/existingAiDetectorSignal.ts";
+import { localOriginalitySignal } from "../../../packages/slop-engine/src/signals/localOriginalitySignal.ts";
+import { temporalDetectorSignal } from "../../../packages/slop-engine/src/signals/temporalDetectorSignal.ts";
+import { visualTemplateSignal } from "../../../packages/slop-engine/src/signals/visualTemplateSignal.ts";
 import type { ScoreVideoOptions, UserPreferenceRules } from "../../../packages/slop-engine/src/types.ts";
 import type {
   ExtractedShort,
@@ -7,12 +20,15 @@ import type {
 } from "../../../packages/shared/src/types.ts";
 import {
   CacheStore,
+  CalibrationStore,
   ChannelPreferenceStore,
   LocalFeedbackStore,
+  LocalOriginalityStore,
   SkipHistoryStore,
   UserSettingsStore
 } from "../../../packages/storage/src/index.ts";
 import type {
+  CalibrationRecord,
   FeedbackRecord,
   SkipHistoryRecord,
   UserFeedbackAction
@@ -29,6 +45,7 @@ import {
 } from "../src/youtube/youtubeLookaheadScanner.ts";
 import type {
   FeedbackPayload,
+  CalibrationLabelPayload,
   ScoreRequestPayload
 } from "./ipcValidation.ts";
 
@@ -46,14 +63,21 @@ export type FeedbackResponse = {
   preferencesChanged: boolean;
 };
 
+export type CalibrationLabelResponse = {
+  record: CalibrationRecord;
+  totalLabels: number;
+};
+
 export type DesktopMockService = ReturnType<typeof createDesktopMockService>;
 
 export function createDesktopMockService(options: DesktopMockServiceOptions) {
   const settingsStore = new UserSettingsStore({ basePath: options.storagePath });
   const feedbackStore = new LocalFeedbackStore({ basePath: options.storagePath });
+  const calibrationStore = new CalibrationStore({ basePath: options.storagePath });
   const cacheStore = new CacheStore({ basePath: options.storagePath });
   const skipHistoryStore = new SkipHistoryStore({ basePath: options.storagePath });
   const channelPreferenceStore = new ChannelPreferenceStore({ basePath: options.storagePath });
+  const originalityStore = new LocalOriginalityStore({ basePath: options.storagePath });
 
   return {
     listFixtures(): MockShortFixture[] {
@@ -83,7 +107,8 @@ export function createDesktopMockService(options: DesktopMockServiceOptions) {
         cacheStore,
         feedbackStore,
         skipHistoryStore,
-        channelPreferenceStore
+        channelPreferenceStore,
+        originalityStore
       );
     },
 
@@ -110,7 +135,8 @@ export function createDesktopMockService(options: DesktopMockServiceOptions) {
         settingsStore,
         cacheStore,
         feedbackStore,
-        channelPreferenceStore
+        channelPreferenceStore,
+        originalityStore
       );
     },
 
@@ -143,6 +169,53 @@ export function createDesktopMockService(options: DesktopMockServiceOptions) {
       };
     },
 
+    async saveCalibrationLabel(payload: CalibrationLabelPayload): Promise<CalibrationLabelResponse> {
+      const short = payload.short ?? resolveShort(payload);
+      const preferencesChanged = payload.userFeedback
+        ? await applyFeedbackPreference(payload.userFeedback, payload.scoreResult, short, channelPreferenceStore)
+        : false;
+      const record = await calibrationStore.append({
+        short,
+        platform: payload.fixtureId ? "mock_fixture" : undefined,
+        scoreResult: payload.scoreResult,
+        userLabel: payload.userLabel,
+        userFeedback: payload.userFeedback ?? null
+      });
+      if (payload.userFeedback) {
+        await feedbackStore.append({
+          videoId: short.videoId,
+          url: short.url,
+          title: short.title,
+          channelName: short.channelName,
+          channelUrl: short.channelUrl,
+          scoreResult: payload.scoreResult,
+          actionTaken: payload.scoreResult.action,
+          userFeedback: payload.userFeedback
+        });
+      }
+
+      if (preferencesChanged) {
+        await cacheStore.clear();
+      }
+
+      return {
+        record,
+        totalLabels: (await calibrationStore.list()).length
+      };
+    },
+
+    async listCalibrationLabels(): Promise<CalibrationRecord[]> {
+      return calibrationStore.list();
+    },
+
+    async exportCalibrationLabels(): Promise<CalibrationRecord[]> {
+      return calibrationStore.exportRecords();
+    },
+
+    async importCalibrationLabels(payload: unknown) {
+      return calibrationStore.importRecords(payload);
+    },
+
     async getSkipHistory(): Promise<SkipHistoryRecord[]> {
       return skipHistoryStore.list();
     },
@@ -162,7 +235,8 @@ async function scoreLookaheadWithStores(
   settingsStore: UserSettingsStore,
   cacheStore: CacheStore,
   feedbackStore: LocalFeedbackStore,
-  channelPreferenceStore: ChannelPreferenceStore
+  channelPreferenceStore: ChannelPreferenceStore,
+  originalityStore: LocalOriginalityStore
 ): Promise<ScoredLookaheadCandidate[]> {
   const settings = await settingsStore.load();
   if (!settings.enableLookaheadScan || settings.lookaheadCount <= 0) {
@@ -181,11 +255,20 @@ async function scoreLookaheadWithStores(
   for (const candidate of candidates) {
     const short = candidateToExtractedShort(candidate);
     const cached = await cacheStore.getScore(short, settings);
-    const baseResult = cached ?? scoreVideo(short, settings, scoreOptions);
+    const localOriginalitySignals = cached
+      ? []
+      : await buildLocalOriginalitySignals(short, settings, originalityStore);
+    const baseResult = cached ?? scoreVideo(short, settings, {
+      ...scoreOptions,
+      adapterSignals: localOriginalitySignals
+    });
 
     if (!cached) {
-      await cacheStore.saveScore(baseResult, settings);
+      if (hasCacheableMetadata(short)) {
+        await cacheStore.saveScore(baseResult, settings, short);
+      }
     }
+    await rememberOriginality(short, settings, originalityStore);
 
     const preSkip = baseResult.action === "skip";
     scored.push({
@@ -211,7 +294,8 @@ async function scoreShortWithStores(
   cacheStore: CacheStore,
   feedbackStore: LocalFeedbackStore,
   skipHistoryStore: SkipHistoryStore,
-  channelPreferenceStore: ChannelPreferenceStore
+  channelPreferenceStore: ChannelPreferenceStore,
+  originalityStore: LocalOriginalityStore
 ): Promise<ScoreShortResponse> {
   const short = resolveShort(payload);
   const persistedSettings = await settingsStore.load();
@@ -221,6 +305,7 @@ async function scoreShortWithStores(
   const cached = await cacheStore.getScore(short, settings);
 
   if (cached) {
+    await rememberOriginality(short, persistedSettings, originalityStore);
     await recordSkipResult(cached, short, skipHistoryStore);
     return {
       result: cached,
@@ -229,16 +314,108 @@ async function scoreShortWithStores(
   }
 
   const scoreOptions: ScoreVideoOptions = {
-    userPreferences: await buildUserPreferenceRules(feedbackStore, channelPreferenceStore)
+    userPreferences: await buildUserPreferenceRules(feedbackStore, channelPreferenceStore),
+    adapterSignals: await buildLocalOriginalitySignals(short, settings, originalityStore)
   };
-  const result = scoreVideo(short, settings, scoreOptions);
-  await cacheStore.saveScore(result, persistedSettings);
+  let result = scoreVideo(short, settings, scoreOptions);
+  if (result.deepScanStatus === "pending") {
+    const adapterSignals = await buildOptionalDeepScanSignals(short, settings);
+    if (adapterSignals.length > 0) {
+      result = scoreVideo(short, settings, {
+        ...scoreOptions,
+        adapterSignals: [
+          ...(scoreOptions.adapterSignals ?? []),
+          ...adapterSignals
+        ]
+      });
+    }
+  }
+  if (hasCacheableMetadata(short)) {
+    await cacheStore.saveScore(result, persistedSettings, short);
+  }
+  await rememberOriginality(short, persistedSettings, originalityStore);
   await recordSkipResult(result, short, skipHistoryStore);
 
   return {
     result,
     cacheHit: false
   };
+}
+
+function hasCacheableMetadata(short: ExtractedShort): boolean {
+  return Boolean(
+    short.title?.trim()
+    || short.description?.trim()
+    || short.visiblePageText.trim()
+    || short.transcript?.trim()
+    || short.platformAiLabelText?.trim()
+  );
+}
+
+async function buildLocalOriginalitySignals(
+  short: ExtractedShort,
+  settings: OrislopSettings,
+  originalityStore: LocalOriginalityStore
+): Promise<NonNullable<ScoreVideoOptions["adapterSignals"]>> {
+  if (!settings.enableLocalOriginalityIndex) {
+    return [];
+  }
+
+  const matches = await originalityStore.findSimilar(short, {
+    limit: 3,
+    minSimilarity: 0.86
+  });
+
+  return [localOriginalitySignal(matches, settings)];
+}
+
+async function rememberOriginality(
+  short: ExtractedShort,
+  settings: OrislopSettings,
+  originalityStore: LocalOriginalityStore
+): Promise<void> {
+  if (settings.enableLocalOriginalityIndex) {
+    await originalityStore.upsert(short);
+  }
+}
+
+async function buildOptionalDeepScanSignals(
+  short: ExtractedShort,
+  settings: OrislopSettings
+): Promise<NonNullable<ScoreVideoOptions["adapterSignals"]>> {
+  if (!settings.enableDeepScan) {
+    return [];
+  }
+
+  const config = await readModelAdaptersConfig().catch(() => null);
+  const adapters = config?.adapters ?? {};
+  const signals: NonNullable<ScoreVideoOptions["adapterSignals"]> = [];
+
+  if (settings.enableExistingAiDetector) {
+    const result = await createExistingAiDetectorAdapter(adapterConfig(adapters.existing_ai_detector)).analyze({ short });
+    signals.push(existingAiDetectorSignal(result, settings));
+  }
+
+  if (settings.enableSpatialDetector) {
+    const result = await createSpatialDetectorAdapter(adapterConfig(adapters.spatial_detector)).analyze({ short });
+    signals.push(visualTemplateSignal(result, settings));
+  }
+
+  if (settings.enableTemporalDetector) {
+    const result = await createTemporalDetectorAdapter(adapterConfig(adapters.temporal_detector)).analyze({ short });
+    signals.push(temporalDetectorSignal(result, settings));
+  }
+
+  return signals;
+}
+
+async function readModelAdaptersConfig(): Promise<ModelAdaptersConfig> {
+  const configPath = join(process.cwd(), "configs", "model_adapters.json");
+  return JSON.parse(await readFile(configPath, "utf8")) as ModelAdaptersConfig;
+}
+
+function adapterConfig(config: AdapterConfig | undefined): Partial<AdapterConfig> {
+  return config ?? { enabled: false, mode: "disabled" };
 }
 
 async function recordSkipResult(
@@ -292,7 +469,7 @@ async function applyFeedbackPreference(
   return userFeedback === "always_block_format" && scoreResult.categories.length > 0;
 }
 
-function resolveShort(payload: ScoreRequestPayload | FeedbackPayload): ExtractedShort {
+function resolveShort(payload: ScoreRequestPayload | FeedbackPayload | CalibrationLabelPayload): ExtractedShort {
   if (payload.short) {
     return payload.short;
   }

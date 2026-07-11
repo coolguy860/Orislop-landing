@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+const { contextBridge, ipcRenderer } = require("electron");
 
 const api = {
   listFixtures: () => ipcRenderer.invoke("orislop:listFixtures"),
@@ -8,6 +8,10 @@ const api = {
   updateSettings: (payload: unknown) => ipcRenderer.invoke("orislop:updateSettings", payload),
   resetSettings: () => ipcRenderer.invoke("orislop:resetSettings"),
   saveFeedback: (payload: unknown) => ipcRenderer.invoke("orislop:saveFeedback", payload),
+  saveCalibrationLabel: (payload: unknown) => ipcRenderer.invoke("orislop:saveCalibrationLabel", payload),
+  listCalibrationLabels: () => ipcRenderer.invoke("orislop:listCalibrationLabels"),
+  exportCalibrationLabels: () => ipcRenderer.invoke("orislop:exportCalibrationLabels"),
+  importCalibrationLabels: (payload: unknown) => ipcRenderer.invoke("orislop:importCalibrationLabels", payload),
   getCachedScore: (payload: unknown) => ipcRenderer.invoke("orislop:getCachedScore", payload),
   getCachedExtractedShort: (short: unknown) => ipcRenderer.invoke("orislop:getCachedScore", { short }),
   scoreLookaheadCandidates: (payload: unknown) => ipcRenderer.invoke("orislop:scoreLookaheadCandidates", payload),

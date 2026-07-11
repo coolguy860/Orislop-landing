@@ -15,8 +15,13 @@ export const POLICY_CATEGORY_SETTINGS: Record<string, string> = {
   reddit_tts_story: "skipRedditTtsStories",
   fake_text_story: "skipFakeTextStories",
   low_information: "skipLowInformation",
+  repetitive_format: "skipRepetitiveFormats",
   repost_like: "skipRepostLike",
+  green_screen_reaction: "skipGreenScreenReactions",
+  low_originality_repost: "skipLowOriginalityReposts",
+  local_duplicate_repost: "skipLowOriginalityReposts",
   ragebait: "skipEngagementBait",
+  community_reaction: "useCommunityReactionSignal",
   scammy: "skipScamFinance",
   scam_finance: "skipScamFinance",
   risky_educational: "skipHighRiskUnsupportedClaims",
@@ -48,8 +53,13 @@ export const NON_CLAIM_SKIP_CATEGORIES = new Set([
   "reddit_tts_story",
   "fake_text_story",
   "low_information",
+  "repetitive_format",
   "repost_like",
+  "green_screen_reaction",
+  "low_originality_repost",
+  "local_duplicate_repost",
   "ragebait",
+  "community_reaction",
   "scammy",
   "scam_finance",
   "risky_educational",
@@ -68,9 +78,26 @@ export function userFacingReasonForCategory(category: string): string {
     case "engagement_bait":
     case "ragebait":
       return CAUTIOUS_REASON_LABELS.engagementBait;
+    case "reddit_story":
+    case "reddit_tts_story":
+    case "tts_story":
+      return CAUTIOUS_REASON_LABELS.redditTts;
+    case "fake_text_story":
+      return CAUTIOUS_REASON_LABELS.fakeChat;
+    case "low_information":
+      return CAUTIOUS_REASON_LABELS.lowInformation;
+    case "repetitive_format":
+      return CAUTIOUS_REASON_LABELS.repetitiveFormat;
     case "template_brainrot":
     case "repost_like":
       return CAUTIOUS_REASON_LABELS.templateRepost;
+    case "green_screen_reaction":
+      return CAUTIOUS_REASON_LABELS.greenScreenReaction;
+    case "low_originality_repost":
+    case "local_duplicate_repost":
+      return CAUTIOUS_REASON_LABELS.lowOriginalityRepost;
+    case "community_reaction":
+      return CAUTIOUS_REASON_LABELS.communityReaction;
     case "scammy":
     case "scam_finance":
       return CAUTIOUS_REASON_LABELS.scamFinance;

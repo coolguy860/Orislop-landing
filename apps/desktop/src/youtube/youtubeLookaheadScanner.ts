@@ -6,10 +6,12 @@ import {
 import {
   extractShortsVideoId,
   normalizeShortsUrl,
+  normalizeWatchUrl,
   parseYouTubeShortsUrl
 } from "./youtubeUrl.ts";
 import type {
   LookaheadContainerSnapshot,
+  LookaheadPosition,
   LookaheadScanOptions,
   LookaheadShortCandidate
 } from "./lookaheadTypes.ts";
@@ -32,11 +34,14 @@ export function scanLookaheadFromSnapshots(
 
 export function candidateToExtractedShort(candidate: LookaheadShortCandidate): ExtractedShort {
   const text = [candidate.title, candidate.visiblePageText].filter(Boolean).join(" ");
-  const disclosure = findAiDisclosure(text);
+  const disclosure = findAiDisclosure(candidate.platformAiLabelText ?? "");
+  const parsed = parseYouTubeShortsUrl(candidate.url ?? "");
 
   return {
+    platform: "youtube",
+    videoKind: parsed.videoKind,
     url: candidate.url ?? candidateUrlFallback(candidate),
-    videoId: candidate.videoId,
+    videoId: candidate.videoId ?? parsed.videoId,
     title: candidate.title,
     channelName: candidate.channelName,
     channelUrl: candidate.channelUrl,
@@ -45,7 +50,11 @@ export function candidateToExtractedShort(candidate: LookaheadShortCandidate): E
     visiblePageText: candidate.visiblePageText,
     hasPlatformAiLabel: disclosure !== null,
     platformAiLabelText: disclosure,
-    transcript: null
+    transcript: null,
+    audioTrackTitle: null,
+    audioIsSong: false,
+    isLikelyAd: false,
+    adNoticeText: null
   };
 }
 
@@ -80,15 +89,24 @@ export function getYouTubeLookaheadScannerScript(limit: number): string {
   return `(${browserScanLookahead.toString()})(${safeLimit});`;
 }
 
+export function getYouTubeRecommendationFilterScript(videoIds: string[]): string {
+  const safeIds = Array.from(new Set(videoIds
+    .filter((videoId) => /^[a-zA-Z0-9_-]{3,128}$/.test(videoId))
+    .slice(0, 20)));
+  return `(${browserFilterFlaggedRecommendations.toString()})(${JSON.stringify(safeIds)});`;
+}
+
 function candidateFromSnapshot(
   snapshot: LookaheadContainerSnapshot,
   index: number,
   currentVideoId: string | null
 ): LookaheadShortCandidate | null {
   const url = normalizeNullable(snapshot.url);
-  const videoId = normalizeNullable(snapshot.videoId) ?? (url ? extractShortsVideoId(url) : null);
+  const parsedUrl = url ? parseYouTubeShortsUrl(url) : null;
+  const videoId = normalizeNullable(snapshot.videoId) ?? parsedUrl?.videoId ?? (url ? extractShortsVideoId(url) : null);
   const visiblePageText = normalizeWhitespace(snapshot.visiblePageText ?? "");
   const title = normalizeNullable(snapshot.title);
+  const platformAiLabelText = findAiDisclosure(normalizeWhitespace(snapshot.platformAiLabelText ?? ""));
 
   if (!url && !videoId && !title && !visiblePageText) {
     return null;
@@ -111,6 +129,7 @@ function candidateFromSnapshot(
     channelName: normalizeNullable(snapshot.channelName),
     channelUrl: normalizeNullable(snapshot.channelUrl),
     visiblePageText,
+    platformAiLabelText,
     position,
     confidence: confidenceForCandidate({
       url: normalizedUrl,
@@ -182,9 +201,13 @@ function dedupeKey(candidate: LookaheadShortCandidate): string {
 }
 
 function candidateUrlFallback(candidate: LookaheadShortCandidate): string {
-  return candidate.videoId
-    ? normalizeShortsUrl(candidate.videoId)
-    : `orislop://lookahead/${encodeURIComponent(candidate.extractionId)}`;
+  if (!candidate.videoId) {
+    return `orislop://lookahead/${encodeURIComponent(candidate.extractionId)}`;
+  }
+
+  return candidate.url && parseYouTubeShortsUrl(candidate.url).isWatchUrl
+    ? normalizeWatchUrl(candidate.videoId)
+    : normalizeShortsUrl(candidate.videoId);
 }
 
 function normalizeNullable(value: string | null | undefined): string | null {
@@ -205,37 +228,43 @@ function smallHash(value: string): string {
   return Math.abs(hash).toString(36);
 }
 
-function browserScanLookahead(limit) {
+function browserScanLookahead(limit: number): LookaheadShortCandidate[] {
   try {
     if (limit <= 0) {
       return [];
     }
 
-    const containers = Array.from(document.querySelectorAll(
-      "ytd-reel-video-renderer, ytd-shorts ytd-reel-video-renderer, #shorts-container ytd-reel-video-renderer, [data-orislop-short]"
+    const containers = Array.from(document.querySelectorAll<HTMLElement>(
+      "ytd-reel-video-renderer, ytd-shorts ytd-reel-video-renderer, #shorts-container ytd-reel-video-renderer, ytd-compact-video-renderer, ytd-rich-item-renderer, ytd-video-renderer, [data-orislop-short]"
     ));
     if (containers.length === 0) {
       return [];
     }
 
-    const activeIndex = Math.max(0, containers.findIndex((node) => (
+    const activeIndexRaw = containers.findIndex((node) => (
       node.hasAttribute("is-active")
       || node.getAttribute("is-active") === "true"
       || node.getAttribute("aria-current") === "true"
-    )));
+    ));
+    const activeIndex = Math.max(0, activeIndexRaw);
     const nearby = containers
       .slice(Math.max(0, activeIndex - 1), activeIndex + limit + 3)
-      .map((container, index) => containerToCandidate(container, index, activeIndex))
-      .filter(Boolean);
+      .map((container, index) => containerToCandidate(container, index, activeIndex, activeIndexRaw >= 0))
+      .filter((candidate): candidate is LookaheadShortCandidate => Boolean(candidate));
 
     return dedupePlain(nearby).slice(0, limit);
   } catch {
     return [];
   }
 
-  function containerToCandidate(container, index, activeIndex) {
-    const anchor = container.querySelector("a[href*='/shorts/']");
-    const channel = container.querySelector("ytd-channel-name a[href], #channel-name a[href], a[href^='/@'], a[href*='youtube.com/@']");
+  function containerToCandidate(
+    container: HTMLElement,
+    index: number,
+    activeIndex: number,
+    hasActiveContainer: boolean
+  ): LookaheadShortCandidate | null {
+    const anchor = container.querySelector<HTMLAnchorElement>("a[href*='/shorts/'], a[href*='/watch?v='], a[href^='https://youtu.be/']");
+    const channel = container.querySelector<HTMLAnchorElement>("ytd-channel-name a[href], #channel-name a[href], a[href^='/@'], a[href*='youtube.com/@']");
     const url = anchor?.href ?? null;
     const videoId = plainVideoIdFromUrl(url);
     const title = firstText([
@@ -245,9 +274,10 @@ function browserScanLookahead(limit) {
       anchor?.textContent
     ]);
     const visiblePageText = visibleTextWithoutComments(container).slice(0, 4000);
-    const position = container.hasAttribute("is-active") || index === activeIndex
+    const platformAiLabelText = platformAiDisclosureText(container);
+    const position = hasActiveContainer && (container.hasAttribute("is-active") || index === activeIndex)
       ? "current"
-      : index === activeIndex + 1
+      : (!hasActiveContainer && index === 0) || index === activeIndex + 1
         ? "next"
         : "nearby";
 
@@ -263,6 +293,7 @@ function browserScanLookahead(limit) {
       channelName: normalizePlain(channel?.textContent ?? "") || null,
       channelUrl: channel?.href ?? null,
       visiblePageText,
+      platformAiLabelText,
       position,
       confidence: confidence({
         url,
@@ -275,7 +306,7 @@ function browserScanLookahead(limit) {
     };
   }
 
-  function firstText(values) {
+  function firstText(values: Array<string | null | undefined>): string | null {
     for (const value of values) {
       const normalized = normalizePlain(value ?? "");
       if (normalized) {
@@ -286,24 +317,65 @@ function browserScanLookahead(limit) {
     return null;
   }
 
-  function visibleTextWithoutComments(container) {
-    const clone = container.cloneNode(true);
+  function visibleTextWithoutComments(container: HTMLElement): string {
+    const clone = container.cloneNode(true) as HTMLElement;
     clone.querySelectorAll("ytd-comments, #comments, [id*='comment'], [class*='comment']").forEach((node) => node.remove());
     return normalizePlain(clone.innerText || clone.textContent || "");
   }
 
-  function plainVideoIdFromUrl(value) {
+  function platformAiDisclosureText(container: HTMLElement): string | null {
+    const selectors = [
+      "[aria-label*='altered or synthetic content' i]",
+      "[title*='altered or synthetic content' i]",
+      "[aria-label*='how this content was made' i]",
+      "ytd-info-panel-content-renderer",
+      "yt-factoid-renderer"
+    ];
+    for (const selector of selectors) {
+      for (const node of Array.from(container.querySelectorAll<HTMLElement>(selector))) {
+        const text = normalizePlain([
+          node.getAttribute("aria-label"),
+          node.getAttribute("title"),
+          node.innerText,
+          node.textContent
+        ].filter(Boolean).join(" "));
+        const match = text.match(/(?:altered or synthetic content|includes? altered or synthetic content|created or altered with ai|generated or altered with ai|how this content was made)/i);
+        if (match) {
+          return match[0];
+        }
+      }
+    }
+    return null;
+  }
+
+  function plainVideoIdFromUrl(value: string | null): string | null {
     if (!value) return null;
     try {
       const url = new URL(value);
       const parts = url.pathname.split("/").filter(Boolean);
-      return parts[0] === "shorts" && parts[1] ? decodeURIComponent(parts[1]) : null;
+      if (parts[0] === "shorts" && parts[1]) {
+        return decodeURIComponent(parts[1]);
+      }
+      if (url.pathname === "/watch") {
+        return url.searchParams.get("v");
+      }
+      if (url.hostname.toLowerCase() === "youtu.be" && parts[0]) {
+        return decodeURIComponent(parts[0]);
+      }
+      return null;
     } catch {
       return null;
     }
   }
 
-  function confidence(input) {
+  function confidence(input: {
+    url: string | null;
+    videoId: string | null;
+    title: string | null;
+    visiblePageText: string;
+    channelName: string | null;
+    position: LookaheadPosition;
+  }): number {
     let score = 0.2;
     if (input.url) score += 0.2;
     if (input.videoId) score += 0.3;
@@ -314,9 +386,9 @@ function browserScanLookahead(limit) {
     return Math.min(1, Number(score.toFixed(2)));
   }
 
-  function dedupePlain(candidates) {
-    const seen = new Set();
-    const deduped = [];
+  function dedupePlain(candidates: LookaheadShortCandidate[]): LookaheadShortCandidate[] {
+    const seen = new Set<string>();
+    const deduped: LookaheadShortCandidate[] = [];
     for (const candidate of candidates) {
       const key = candidate.videoId ? `video:${candidate.videoId}` : candidate.url ? `url:${candidate.url}` : candidate.extractionId;
       if (seen.has(key)) {
@@ -328,15 +400,71 @@ function browserScanLookahead(limit) {
     return deduped;
   }
 
-  function normalizePlain(value) {
+  function normalizePlain(value: string): string {
     return value.replace(/\s+/g, " ").trim();
   }
 
-  function plainHash(value) {
+  function plainHash(value: string): string {
     let hash = 0;
     for (let index = 0; index < value.length; index += 1) {
       hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
     }
     return Math.abs(hash).toString(36);
+  }
+}
+
+function browserFilterFlaggedRecommendations(videoIds: string[]): number {
+  try {
+    const ids = new Set(videoIds);
+    if (ids.size === 0) {
+      return 0;
+    }
+
+    const containers = Array.from(document.querySelectorAll<HTMLElement>(
+      "ytd-compact-video-renderer, ytd-rich-item-renderer, ytd-video-renderer"
+    ));
+    let hiddenCount = 0;
+
+    for (const container of containers) {
+      const anchor = container.querySelector<HTMLAnchorElement>("a[href*='/watch?v='], a[href*='/shorts/']");
+      const id = plainVideoIdFromUrl(anchor?.href ?? null);
+      const text = normalizePlain(container.innerText || container.textContent || "");
+      if (!id || !ids.has(id) || isAdLikeRecommendation(text)) {
+        continue;
+      }
+
+      container.hidden = true;
+      container.setAttribute("data-orislop-filtered", "true");
+      hiddenCount += 1;
+    }
+
+    return hiddenCount;
+  } catch {
+    return 0;
+  }
+
+  function plainVideoIdFromUrl(value: string | null): string | null {
+    if (!value) return null;
+    try {
+      const url = new URL(value);
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts[0] === "shorts" && parts[1]) {
+        return decodeURIComponent(parts[1]);
+      }
+      if (url.pathname === "/watch") {
+        return url.searchParams.get("v");
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function isAdLikeRecommendation(text: string): boolean {
+    return /\b(?:sponsored|paid promotion|visit advertiser|why this ad|skip ad|ad\s+\d+\s+of\s+\d+)\b/i.test(text);
+  }
+
+  function normalizePlain(value: string): string {
+    return value.replace(/\s+/g, " ").trim();
   }
 }

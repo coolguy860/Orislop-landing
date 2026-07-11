@@ -2,7 +2,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDesktopMockService } from "../electron/desktopService.ts";
-import { registerOrislopIpcHandlers } from "../electron/ipcHandlers.ts";
+import { assertTrustedIpcSender, registerOrislopIpcHandlers } from "../electron/ipcHandlers.ts";
+
+const TRUSTED_IPC_EVENT = { senderFrame: { url: "file:///orislop/index.html" } };
 
 const REQUIRED_IPC_CHANNELS = [
   "orislop:scoreShort",
@@ -10,6 +12,10 @@ const REQUIRED_IPC_CHANNELS = [
   "orislop:updateSettings",
   "orislop:resetSettings",
   "orislop:saveFeedback",
+  "orislop:saveCalibrationLabel",
+  "orislop:listCalibrationLabels",
+  "orislop:exportCalibrationLabels",
+  "orislop:importCalibrationLabels",
   "orislop:getCachedScore",
   "orislop:scoreLookaheadCandidates",
   "orislop:clearCache",
@@ -42,6 +48,8 @@ async function runDesktopChecks(storagePath) {
 
   const settings = await service.getSettings();
   assertEqual("settings default autoSkip", settings.autoSkip, true);
+  assertEqual("settings default hide flagged current video", settings.hideFlaggedCurrentVideo, true);
+  assertEqual("settings default observe playback", settings.observePlaybackBeforeScoring, true);
   const updatedSettings = await service.updateSettings({ autoSkip: false });
   assertEqual("settings persist through desktop service", updatedSettings.autoSkip, false);
   await service.updateSettings({ autoSkip: true });
@@ -65,6 +73,25 @@ async function runDesktopChecks(storagePath) {
   assertEqual("feedback saves locally", feedback.record.userFeedback, "always_allow_channel");
   assertEqual("preference-changing feedback is tracked", feedback.preferencesChanged, true);
 
+  const calibration = await service.saveCalibrationLabel({
+    fixtureId: obviousFixture.id,
+    scoreResult: forcedScore.result,
+    userLabel: "slop",
+    userFeedback: "correct"
+  });
+  assertEqual("calibration label saves locally", calibration.record.userLabel, "slop");
+  assertEqual("calibration feedback saves locally", calibration.record.userFeedback, "correct");
+  assertEqual("calibration label count updates", calibration.totalLabels, 1);
+  assertEqual("calibration export returns records", (await service.exportCalibrationLabels()).length, 1);
+
+  const notSlopCalibration = await service.saveCalibrationLabel({
+    fixtureId: obviousFixture.id,
+    scoreResult: forcedScore.result,
+    userLabel: "not_slop",
+    userFeedback: "always_allow_channel"
+  });
+  assertEqual("unified always-allow label saves", notSlopCalibration.record.userFeedback, "always_allow_channel");
+
   const allowedScore = await service.scoreShort({ fixtureId: obviousFixture.id });
   assertEqual("always allow channel affects future scoring", allowedScore.result.action, "allow");
 
@@ -76,6 +103,31 @@ async function runDesktopChecks(storagePath) {
   });
   const cachedAfterWatchAnyway = await service.scoreShort({ fixtureId: normalFixture.id });
   assertEqual("non-preference feedback keeps cache usable", cachedAfterWatchAnyway.cacheHit, true);
+
+  const seedOriginal = await service.scoreShort({
+    short: {
+      ...obviousFixture.short,
+      videoId: "desktop-originality-seed",
+      url: "https://www.youtube.com/shorts/desktop-originality-seed",
+      title: "AI voice viral clips compilation",
+      visiblePageText: "ai voice compilation viral clips source unknown"
+    }
+  });
+  assert(seedOriginal.result, "local originality seed scores");
+  const similarOriginality = await service.scoreShort({
+    short: {
+      ...obviousFixture.short,
+      videoId: "desktop-originality-copy",
+      url: "https://www.youtube.com/shorts/desktop-originality-copy",
+      title: "AI voice viral clips compilation repost",
+      visiblePageText: "ai voice compilation viral clips source unknown not mine"
+    },
+    forceRescan: true
+  });
+  assert(
+    similarOriginality.result.categories.includes("local_duplicate_repost"),
+    "desktop service applies local originality similarity"
+  );
 
   const markScrolledBack = await service.markScrolledBack({ fixtureId: obviousFixture.id });
   assert(markScrolledBack?.scrolledBack, "scroll-back marker updates skip history");
@@ -91,11 +143,24 @@ async function runDesktopChecks(storagePath) {
   for (const channel of REQUIRED_IPC_CHANNELS) {
     assert(ipcHandlers.has(channel), `IPC channel registered: ${channel}`);
   }
-  const ipcScore = await ipcHandlers.get("orislop:scoreShort")(null, { fixtureId: obviousFixture.id });
+  const ipcScore = await ipcHandlers.get("orislop:scoreShort")(TRUSTED_IPC_EVENT, { fixtureId: obviousFixture.id });
   assert(ipcScore.result, "IPC scoreShort returns a result");
   await assertRejects(
-    () => ipcHandlers.get("orislop:scoreShort")(null, { fixtureId: 42 }),
+    () => ipcHandlers.get("orislop:scoreShort")(TRUSTED_IPC_EVENT, { fixtureId: 42 }),
     "IPC validation rejects invalid score payload"
+  );
+  await assertRejects(
+    () => ipcHandlers.get("orislop:saveCalibrationLabel")(TRUSTED_IPC_EVENT, {
+      fixtureId: obviousFixture.id,
+      scoreResult: forcedScore.result,
+      userLabel: "wild"
+    }),
+    "IPC validation rejects invalid calibration label"
+  );
+  assertTrustedIpcSender(TRUSTED_IPC_EVENT);
+  await assertRejects(
+    () => ipcHandlers.get("orislop:getSettings")({ senderFrame: { url: "https://evil.example/" } }),
+    "IPC rejects remote renderer origins"
   );
 }
 

@@ -7,7 +7,17 @@
     "noEmit": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx"
   },
-  "include": ["packages/**/*.ts"]
+  "include": [
+    "packages/**/*.ts",
+    "apps/desktop/electron/**/*.ts",
+    "apps/desktop/src/**/*.ts",
+    "apps/desktop/src/**/*.tsx",
+    "apps/web/src/**/*.ts",
+    "apps/web/src/**/*.tsx",
+    "apps/web/tests/**/*.mjs",
+    "types/**/*.d.ts"
+  ]
 }

@@ -6,6 +6,7 @@ import type {
   OrislopSettings
 } from "../../shared/src/types.ts";
 import { collectEvidence, fuseSignals } from "./fuseSignals.ts";
+import { deepScanStatusForScore } from "./deepScan/deepScanPolicy.ts";
 import { userFacingReasonForCategory } from "./policy/defaultPolicy.ts";
 import {
   comedySatireScore,
@@ -15,12 +16,14 @@ import {
 } from "./policy/contentIntent.ts";
 import { normalizeSettings } from "./settings.ts";
 import { contentIntentSignal } from "./signals/contentIntentSignal.ts";
+import { communityReactionSignal } from "./signals/communityReactionSignal.ts";
 import { metadataRulesSignal } from "./signals/metadataRulesSignal.ts";
 import { platformAiLabelSignal } from "./signals/platformAiLabelSignal.ts";
 import { transcriptRulesSignal } from "./signals/transcriptRulesSignal.ts";
 import { userPreferenceSignal } from "./signals/userPreferenceSignal.ts";
 import { actionFromProbability, getThresholds } from "./thresholds.ts";
 import type { ScoreVideoOptions, SignalResult } from "./types.ts";
+import { sourceVerificationSummaryForScore } from "./verification/sourceVerification.ts";
 
 export function scoreVideo(
   short: ExtractedShort,
@@ -33,6 +36,7 @@ export function scoreVideo(
     metadataRulesSignal(short),
     transcriptRulesSignal(short),
     contentIntentSignal(short),
+    communityReactionSignal(short.communityReactionSummary, settings),
     ...(options.adapterSignals ?? [])
   ];
   const preliminary = fuseSignals(baseSignals, settings);
@@ -47,22 +51,47 @@ export function scoreVideo(
   const fused = fuseSignals(signals, settings);
   const contentIntent = inferContentIntent(short);
   const thresholds = getThresholds(settings.strictness);
+  const verificationSummary = sourceVerificationSummaryForScore(
+    short,
+    fused.categories,
+    settings,
+    options.createdAt ?? null
+  );
+  const aiEvidenceScore = maxNullable([
+    fused.aiGeneratedScore,
+    fused.possibleUnlabeledAiScore
+  ]);
+  const evidenceScore = maxNullable([
+    fused.slopScore,
+    fused.claimRiskScore,
+    aiEvidenceScore,
+    fused.originalityRiskScore,
+    fused.skipProbability
+  ]) ?? 0;
   const preferenceOverride = getPreferenceOverride(signals, fused.categories, settings);
   const protectedFromClaimOnlySkip = shouldProtectFromClaimOnlySkip(
     contentIntent,
     fused.categories,
     settings
   );
+  const protectedFromEntertainmentOnlySkip = shouldProtectFromEntertainmentOnlySkip(
+    contentIntent,
+    fused.categories
+  );
+  const shouldAvoidAdAutoSkip = short.isLikelyAd === true;
 
   const effectiveSkipProbability = protectedFromClaimOnlySkip
+    || protectedFromEntertainmentOnlySkip
+    || shouldAvoidAdAutoSkip
     ? Math.min(fused.skipProbability, Math.max(0, thresholds.skipAt - 0.01))
     : fused.skipProbability;
 
-  const action = actionFromPreferenceOrProbability(
+  const rawAction = actionFromPreferenceOrProbability(
     preferenceOverride,
     effectiveSkipProbability,
     settings
   );
+  const action = shouldAvoidAdAutoSkip && rawAction === "skip" ? "warn" : rawAction;
   const primaryCategory = fused.categories[0] ?? null;
   const userFacingReason = action === "allow" || primaryCategory === null
     ? null
@@ -78,6 +107,12 @@ export function scoreVideo(
     possibleUnlabeledAiScore: fused.possibleUnlabeledAiScore === null
       ? null
       : clamp01(fused.possibleUnlabeledAiScore),
+    slopEvidenceScore: clamp01(fused.slopScore),
+    aiEvidenceScore: aiEvidenceScore === null ? null : clamp01(aiEvidenceScore),
+    entertainmentScore: clamp01(comedySatireScore(contentIntent)),
+    originalityRiskScore: fused.originalityRiskScore === null ? null : clamp01(fused.originalityRiskScore),
+    evidenceScore: clamp01(evidenceScore),
+    riskBand: riskBandForEvidence(evidenceScore),
 
     contentIntent,
     factualIntentScore: factualIntentScore(contentIntent),
@@ -92,12 +127,37 @@ export function scoreVideo(
     action,
     skipReason: action === "allow" ? null : primaryCategory,
     userFacingReason,
+    verificationStatus: verificationSummary.status,
+    verificationSummary,
+    deepScanStatus: deepScanStatusForScore(settings, signals, fused),
+    adSafetyStatus: shouldAvoidAdAutoSkip ? "visible_ad_limited" : "not_ad",
 
     thresholdUsed: thresholds.skipAt,
     settingsApplied: fused.settingsApplied,
     signals,
     createdAt: options.createdAt ?? new Date().toISOString()
   };
+}
+
+function riskBandForEvidence(evidenceScore: number): OrislopScoreResult["riskBand"] {
+  if (evidenceScore >= 0.78) {
+    return "severe";
+  }
+  if (evidenceScore >= 0.62) {
+    return "high";
+  }
+  if (evidenceScore >= 0.46) {
+    return "medium";
+  }
+  if (evidenceScore > 0) {
+    return "low";
+  }
+  return "none";
+}
+
+function maxNullable(values: Array<number | null>): number | null {
+  const numbers = values.filter((value): value is number => typeof value === "number");
+  return numbers.length > 0 ? Math.max(...numbers) : null;
 }
 
 function shouldProtectFromClaimOnlySkip(
@@ -119,6 +179,25 @@ function shouldProtectFromClaimOnlySkip(
     || category === "serious_claim"
     || category === "high_risk_unsupported_claim"
   ));
+}
+
+function shouldProtectFromEntertainmentOnlySkip(
+  contentIntent: ReturnType<typeof inferContentIntent>,
+  categories: string[]
+): boolean {
+  if (!isComedyProtectedIntent(contentIntent) || categories.length === 0) {
+    return false;
+  }
+
+  const entertainmentOnlyCategories = new Set([
+    "entertainment_safe",
+    "normal_entertainment",
+    "comedy_satire",
+    "repetitive_format",
+    "low_information"
+  ]);
+
+  return categories.every((category) => entertainmentOnlyCategories.has(category));
 }
 
 export function actionAllowsAutoScroll(action: OrislopAction): boolean {

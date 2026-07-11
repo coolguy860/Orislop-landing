@@ -6,10 +6,16 @@ import {
   createShortsNavigationObserver
 } from "../src/youtube/youtubeNavigationObserver.ts";
 import {
+  getYouTubeClearCurrentVideoShieldScript,
+  getYouTubeCurrentVideoShieldScript
+} from "../src/youtube/youtubeCurrentVideoShield.ts";
+import {
   extractHashtags,
   extractShortFromSnapshot,
+  findAdNotice,
   findAiDisclosure,
-  getYouTubeShortsExtractorScript
+  getYouTubeShortsExtractorScript,
+  summarizeVisibleCommunityReactions
 } from "../src/youtube/youtubeShortsExtractor.ts";
 import {
   parseYouTubeShortsUrl,
@@ -32,6 +38,13 @@ async function runChecks(storagePath) {
   assertEqual("Shorts URL normalized", parsed.normalizedUrl, "https://www.youtube.com/shorts/abc_123-XYZ");
   assertEqual("Shorts home is allowed", parseYouTubeShortsUrl(YOUTUBE_SHORTS_HOME_URL).isShortsUrl, true);
   assertEqual("General watch URL rejected", parseYouTubeShortsUrl("https://www.youtube.com/watch?v=abc").isShortsUrl, false);
+  const watch = parseYouTubeShortsUrl("https://www.youtube.com/watch?v=watch_123&list=nope");
+  assertEqual("Watch URL detected", watch.isWatchUrl, true);
+  assertEqual("Watch videoId parsed", watch.videoId, "watch_123");
+  assertEqual("Watch URL normalized", watch.normalizedUrl, "https://www.youtube.com/watch?v=watch_123");
+  const youtuBe = parseYouTubeShortsUrl("https://youtu.be/shortlink123?t=4");
+  assertEqual("youtu.be URL detected", youtuBe.isWatchUrl, true);
+  assertEqual("youtu.be videoId parsed", youtuBe.videoId, "shortlink123");
 
   const extracted = extractShortFromSnapshot({
     url: "https://www.youtube.com/shorts/ai-explainer",
@@ -42,15 +55,48 @@ async function runChecks(storagePath) {
     }],
     descriptionCandidates: ["Made with AI. A compact lesson. #Education"],
     visibleText: "Altered or synthetic content visible on page #Learn",
+    aiDisclosureCandidates: ["Altered or synthetic content"],
     transcriptCandidates: []
   });
   assertEqual("Extracted videoId", extracted.videoId, "ai-explainer");
+  assertEqual("Extracted video kind", extracted.videoKind, "short");
   assertEqual("Extracted title", extracted.title, "AI-generated explainer #Transformers");
   assertEqual("Extracted channel", extracted.channelName, "Model Notes");
   assertEqual("AI disclosure detected", extracted.hasPlatformAiLabel, true);
   assert(extracted.hashtags.includes("transformers"), "Hashtag from title extracted");
   assert(extracted.hashtags.includes("education"), "Hashtag from description extracted");
   assert(extracted.hashtags.includes("learn"), "Hashtag from visible text extracted");
+
+  const watchExtracted = extractShortFromSnapshot({
+    url: "https://www.youtube.com/watch?v=watch-song",
+    titleCandidates: ["Summer Nights official audio #Music"],
+    channelCandidates: [{
+      name: "Song Channel",
+      url: "https://www.youtube.com/@songchannel"
+    }],
+    descriptionCandidates: ["Official audio and lyrics."],
+    visibleText: "music video page",
+    audioCandidates: ["Summer Nights - Original Audio"],
+    videoDurationSec: 83.2,
+    playbackCurrentTimeSec: 3.4,
+    playbackPaused: false,
+    playbackReadyState: 4,
+    playerStateText: "video playing 0:03 1:23"
+  });
+  assertEqual("Watch extraction video kind", watchExtracted.videoKind, "watch");
+  assertEqual("Watch extraction videoId", watchExtracted.videoId, "watch-song");
+  assertEqual("Watch extraction audio song", watchExtracted.audioIsSong, true);
+  assertEqual("Watch extraction observes duration", watchExtracted.videoDurationSec, 83.2);
+  assertEqual("Watch extraction observes playback state", watchExtracted.playbackPaused, false);
+
+  const adExtracted = extractShortFromSnapshot({
+    url: "https://www.youtube.com/watch?v=ad-test",
+    titleCandidates: ["Sponsored AI voice finance clip"],
+    visibleText: "Paid promotion Visit advertiser skip ad",
+    descriptionCandidates: ["Sponsored"]
+  });
+  assertEqual("Ad surface detected", adExtracted.isLikelyAd, true);
+  assertEqual("Ad notice helper", findAdNotice("Paid promotion"), "Paid promotion");
 
   const partial = extractShortFromSnapshot({
     url: "https://www.youtube.com/shorts/missing-fields",
@@ -62,8 +108,39 @@ async function runChecks(storagePath) {
   assertEqual("Partial extraction visible text is safe", partial.visiblePageText, "");
 
   assert(extractHashtags("#One #two #One").length === 2, "Hashtags are deduplicated");
-  assertEqual("AI disclosure helper", findAiDisclosure("Altered or synthetic content"), "Altered");
+  assertEqual("AI disclosure helper", findAiDisclosure("Altered or synthetic content"), "Altered or synthetic content");
+  assertEqual("Generic AI education title is not a platform disclosure", findAiDisclosure("How to detect AI-generated content"), null);
+  const ordinaryAiText = extractShortFromSnapshot({
+    url: "https://www.youtube.com/watch?v=ai-education",
+    titleCandidates: ["How to detect AI-generated content"],
+    descriptionCandidates: ["A tutorial about synthetic media."],
+    visibleText: "Up next: AI-generated Reddit story over Minecraft parkour",
+    aiDisclosureCandidates: []
+  });
+  assertEqual("Creator and recommendation text do not become a platform label", ordinaryAiText.hasPlatformAiLabel, false);
   assert(getYouTubeShortsExtractorScript().includes("browserExtractCurrentShort"), "Webview extractor script is generated");
+  assert(getYouTubeShortsExtractorScript({
+    includeCommunityReaction: true,
+    maxVisibleCommentsToInspect: 4
+  }).includes("maxVisibleCommentsToInspect"), "Webview extractor accepts community options");
+  assert(getYouTubeCurrentVideoShieldScript("reason").includes("browserShieldCurrentVideo"), "Current video shield script is generated");
+  assert(getYouTubeClearCurrentVideoShieldScript().includes("browserClearCurrentVideoShield"), "Current video clear script is generated");
+
+  const disabledCommunity = summarizeVisibleCommunityReactions(["this is slop"]);
+  assertEqual("Community signal disabled by default", disabledCommunity.status, "disabled");
+  const community = summarizeVisibleCommunityReactions([
+    "ai slop",
+    "repost",
+    "this is fake",
+    "normal comment"
+  ], {
+    includeCommunityReaction: true,
+    maxVisibleCommentsToInspect: 4,
+    sampledAt: "2026-06-26T00:00:00.000Z"
+  });
+  assertEqual("Community comments inspected", community.inspectedCount, 4);
+  assert(community.matchedCategories.includes("slop"), "Community slop category counted");
+  assertEqual("Community raw comments flag", community.usedRawComments, false);
 
   await assertNavigationObserver();
 

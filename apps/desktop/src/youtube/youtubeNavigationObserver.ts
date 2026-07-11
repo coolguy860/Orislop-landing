@@ -37,7 +37,7 @@ export function createShortsNavigationObserver(
       timeout = null;
       const settledUrl = pendingUrl ?? options.getCurrentUrl();
       const parsed = parseYouTubeShortsUrl(settledUrl);
-      if (!parsed.isShortsUrl) {
+      if (!parsed.isShortsUrl && !parsed.isWatchUrl) {
         return;
       }
 

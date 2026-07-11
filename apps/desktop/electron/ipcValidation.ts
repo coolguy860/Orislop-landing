@@ -1,4 +1,8 @@
 import type {
+  CalibrationUserLabel,
+  CommunityKeywordCategory,
+  CommunityReactionStrength,
+  CommunityReactionSummary,
   ExtractedShort,
   OrislopScoreResult,
   OrislopSettings
@@ -23,8 +27,17 @@ export type FeedbackPayload = {
   userFeedback: UserFeedbackAction;
 };
 
+export type CalibrationLabelPayload = {
+  fixtureId?: string;
+  short?: ExtractedShort;
+  scoreResult: OrislopScoreResult;
+  userLabel: CalibrationUserLabel;
+  userFeedback?: UserFeedbackAction | null;
+};
+
 const FEEDBACK_ACTIONS = new Set<UserFeedbackAction>([
   "correct",
+  "wrong",
   "not_slop",
   "always_allow_channel",
   "always_block_channel",
@@ -38,6 +51,34 @@ const LOOKAHEAD_POSITIONS = new Set<LookaheadPosition>([
   "next",
   "nearby",
   "unknown"
+]);
+
+const CALIBRATION_LABELS = new Set<CalibrationUserLabel>([
+  "slop",
+  "not_slop",
+  "unclear",
+  "ai_generated",
+  "claim_risk"
+]);
+
+const COMMUNITY_STATUSES = new Set<CommunityReactionSummary["status"]>([
+  "disabled",
+  "unavailable",
+  "available"
+]);
+
+const COMMUNITY_STRENGTHS = new Set<CommunityReactionStrength>([
+  "none",
+  "weak",
+  "medium",
+  "strong"
+]);
+
+const COMMUNITY_CATEGORIES = new Set<CommunityKeywordCategory>([
+  "slop",
+  "fake_repost",
+  "ai",
+  "scam_claim_risk"
 ]);
 
 export function readScorePayload(payload: unknown): ScoreRequestPayload {
@@ -82,6 +123,45 @@ export function readFeedbackPayload(payload: unknown): FeedbackPayload {
   };
 }
 
+export function readCalibrationLabelPayload(payload: unknown): CalibrationLabelPayload {
+  if (!isRecord(payload)) {
+    throw new Error("Calibration label payload must be an object.");
+  }
+
+  const userLabel = payload.userLabel;
+  if (typeof userLabel !== "string" || !CALIBRATION_LABELS.has(userLabel as CalibrationUserLabel)) {
+    throw new Error("Calibration label payload has an invalid userLabel value.");
+  }
+
+  if (!isScoreResult(payload.scoreResult)) {
+    throw new Error("Calibration label payload requires a scoreResult.");
+  }
+
+  const fixtureId = optionalString(payload.fixtureId, "fixtureId");
+  const short = payload.short === undefined ? undefined : readExtractedShort(payload.short);
+  if (!fixtureId && !short) {
+    throw new Error("Calibration label payload requires fixtureId or short.");
+  }
+
+  return {
+    fixtureId,
+    short,
+    scoreResult: payload.scoreResult,
+    userLabel: userLabel as CalibrationUserLabel,
+    userFeedback: payload.userFeedback === undefined || payload.userFeedback === null
+      ? null
+      : readFeedbackAction(payload.userFeedback)
+  };
+}
+
+export function readCalibrationImportPayload(payload: unknown): unknown[] {
+  if (!Array.isArray(payload)) {
+    throw new Error("Calibration import payload must be an array.");
+  }
+
+  return payload.slice(0, 5000);
+}
+
 export function readSettingsPatch(payload: unknown): Partial<OrislopSettings> {
   if (!isRecord(payload)) {
     throw new Error("Settings patch must be an object.");
@@ -113,6 +193,8 @@ function readExtractedShort(value: unknown): ExtractedShort {
   }
 
   return {
+    platform: readOptionalEnum(value.platform, "short.platform", ["youtube", "mock", "unknown"]),
+    videoKind: readOptionalEnum(value.videoKind, "short.videoKind", ["short", "watch", "unknown"]),
     url: requiredString(value.url, "short.url"),
     videoId: nullableString(value.videoId, "short.videoId"),
     title: nullableString(value.title, "short.title"),
@@ -123,8 +205,61 @@ function readExtractedShort(value: unknown): ExtractedShort {
     visiblePageText: requiredString(value.visiblePageText, "short.visiblePageText"),
     hasPlatformAiLabel: requiredBoolean(value.hasPlatformAiLabel, "short.hasPlatformAiLabel"),
     platformAiLabelText: nullableString(value.platformAiLabelText, "short.platformAiLabelText"),
-    transcript: nullableString(value.transcript, "short.transcript")
+    transcript: nullableString(value.transcript, "short.transcript"),
+    audioTrackTitle: value.audioTrackTitle === undefined ? undefined : nullableString(value.audioTrackTitle, "short.audioTrackTitle"),
+    audioIsSong: value.audioIsSong === undefined ? undefined : requiredBoolean(value.audioIsSong, "short.audioIsSong"),
+    videoDurationSec: value.videoDurationSec === undefined ? undefined : nullableFiniteNumber(value.videoDurationSec, "short.videoDurationSec"),
+    playbackCurrentTimeSec: value.playbackCurrentTimeSec === undefined ? undefined : nullableFiniteNumber(value.playbackCurrentTimeSec, "short.playbackCurrentTimeSec"),
+    playbackPaused: value.playbackPaused === undefined ? undefined : nullableBoolean(value.playbackPaused, "short.playbackPaused"),
+    playbackReadyState: value.playbackReadyState === undefined ? undefined : nullableFiniteNumber(value.playbackReadyState, "short.playbackReadyState"),
+    playerStateText: value.playerStateText === undefined ? undefined : nullableString(value.playerStateText, "short.playerStateText"),
+    isLikelyAd: value.isLikelyAd === undefined ? undefined : requiredBoolean(value.isLikelyAd, "short.isLikelyAd"),
+    adNoticeText: value.adNoticeText === undefined ? undefined : nullableString(value.adNoticeText, "short.adNoticeText"),
+    communityReactionSummary: value.communityReactionSummary === undefined || value.communityReactionSummary === null
+      ? null
+      : readCommunityReactionSummary(value.communityReactionSummary)
   };
+}
+
+function readCommunityReactionSummary(value: unknown): CommunityReactionSummary {
+  if (!isRecord(value)) {
+    throw new Error("communityReactionSummary must be an object.");
+  }
+
+  const status = value.status;
+  if (typeof status !== "string" || !COMMUNITY_STATUSES.has(status as CommunityReactionSummary["status"])) {
+    throw new Error("communityReactionSummary.status is invalid.");
+  }
+
+  const strength = value.strength;
+  if (typeof strength !== "string" || !COMMUNITY_STRENGTHS.has(strength as CommunityReactionStrength)) {
+    throw new Error("communityReactionSummary.strength is invalid.");
+  }
+
+  const matchCounts = readCommunityMatchCounts(value.matchCounts);
+  const matchedCategories = readCommunityCategories(value.matchedCategories);
+
+  if (value.usedRawComments !== false) {
+    throw new Error("communityReactionSummary.usedRawComments must be false.");
+  }
+
+  return {
+    status: status as CommunityReactionSummary["status"],
+    inspectedCount: finiteNumber(value.inspectedCount, "communityReactionSummary.inspectedCount", 0, 50),
+    matchCounts,
+    matchedCategories,
+    strength: strength as CommunityReactionStrength,
+    usedRawComments: false,
+    sampledAt: nullableString(value.sampledAt, "communityReactionSummary.sampledAt")
+  };
+}
+
+function readFeedbackAction(value: unknown): UserFeedbackAction {
+  if (typeof value !== "string" || !FEEDBACK_ACTIONS.has(value as UserFeedbackAction)) {
+    throw new Error("Feedback action is invalid.");
+  }
+
+  return value as UserFeedbackAction;
 }
 
 function isScoreResult(value: unknown): value is OrislopScoreResult {
@@ -157,6 +292,9 @@ function readLookaheadCandidate(value: unknown): LookaheadShortCandidate {
     channelName: nullableString(value.channelName, "candidate.channelName"),
     channelUrl: nullableString(value.channelUrl, "candidate.channelUrl"),
     visiblePageText: requiredString(value.visiblePageText, "candidate.visiblePageText"),
+    platformAiLabelText: value.platformAiLabelText === undefined
+      ? null
+      : nullableString(value.platformAiLabelText, "candidate.platformAiLabelText"),
     position: position as LookaheadPosition,
     confidence
   };
@@ -194,6 +332,14 @@ function requiredBoolean(value: unknown, field: string): boolean {
   return value;
 }
 
+function nullableBoolean(value: unknown, field: string): boolean | null {
+  if (value === null) {
+    return null;
+  }
+
+  return requiredBoolean(value, field);
+}
+
 function optionalBoolean(value: unknown, field: string): boolean | undefined {
   if (value === undefined) {
     return undefined;
@@ -205,6 +351,61 @@ function optionalBoolean(value: unknown, field: string): boolean | undefined {
 function readStringArray(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
     throw new Error(`${field} must be a string array.`);
+  }
+
+  return value;
+}
+
+function readOptionalEnum<T extends string>(value: unknown, field: string, allowed: readonly T[]): T | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string" || !allowed.includes(value as T)) {
+    throw new Error(`${field} is invalid.`);
+  }
+
+  return value as T;
+}
+
+function readCommunityMatchCounts(value: unknown): Record<CommunityKeywordCategory, number> {
+  if (!isRecord(value)) {
+    throw new Error("communityReactionSummary.matchCounts must be an object.");
+  }
+
+  return {
+    slop: finiteNumber(value.slop, "matchCounts.slop", 0, 50),
+    fake_repost: finiteNumber(value.fake_repost, "matchCounts.fake_repost", 0, 50),
+    ai: finiteNumber(value.ai, "matchCounts.ai", 0, 50),
+    scam_claim_risk: finiteNumber(value.scam_claim_risk, "matchCounts.scam_claim_risk", 0, 50)
+  };
+}
+
+function readCommunityCategories(value: unknown): CommunityKeywordCategory[] {
+  if (!Array.isArray(value)) {
+    throw new Error("communityReactionSummary.matchedCategories must be an array.");
+  }
+
+  return value
+    .filter((item): item is CommunityKeywordCategory => typeof item === "string" && COMMUNITY_CATEGORIES.has(item as CommunityKeywordCategory))
+    .slice(0, 4);
+}
+
+function finiteNumber(value: unknown, field: string, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${field} must be a finite number.`);
+  }
+
+  return Math.max(min, Math.min(max, value));
+}
+
+function nullableFiniteNumber(value: unknown, field: string): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${field} must be a finite number or null.`);
   }
 
   return value;

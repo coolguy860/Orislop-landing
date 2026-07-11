@@ -35,10 +35,10 @@ export function contentIntentSignal(short: ExtractedShort): SignalResult {
 function categoriesForIntent(intent: ContentIntent): string[] {
   switch (intent) {
     case "comedy_satire":
-      return ["comedy_satire"];
+      return ["entertainment_safe", "comedy_satire"];
     case "normal_entertainment":
     case "fiction_story":
-      return ["normal_entertainment"];
+      return ["entertainment_safe", "normal_entertainment"];
     case "serious_education":
       return ["high_value_content"];
     case "scam_promo":

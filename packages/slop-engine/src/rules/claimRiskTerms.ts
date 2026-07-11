@@ -14,7 +14,11 @@ export const CLAIM_RISK_TERMS = [
   "unsupported study",
   "proven overnight",
   "guaranteed returns",
-  "this stock will"
+  "this stock will",
+  "risk free profit",
+  "copy my trades",
+  "lose weight overnight",
+  "one food doctors hate"
 ] as const;
 
 export const CONSPIRACY_FRAMING_TERMS = [

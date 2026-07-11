@@ -7,6 +7,7 @@ import {
   candidateToExtractedShort,
   dedupeLookaheadCandidates,
   getYouTubeLookaheadScannerScript,
+  getYouTubeRecommendationFilterScript,
   limitLookaheadCandidates,
   scanLookaheadFromSnapshots
 } from "../src/youtube/youtubeLookaheadScanner.ts";
@@ -28,6 +29,7 @@ async function runLookaheadChecks(storagePath) {
       channelName: "Bench Notes",
       channelUrl: "https://www.youtube.com/@benchnotes",
       visiblePageText: "normal entertainment vlog",
+      platformAiLabelText: null,
       isActive: true
     },
     {
@@ -36,17 +38,20 @@ async function runLookaheadChecks(storagePath) {
       channelName: "ClipsMax",
       channelUrl: "https://www.youtube.com/@clipsmax",
       visiblePageText: "watch till the end satisfying background like and follow",
+      platformAiLabelText: null,
       position: "next"
     },
     {
       url: "https://www.youtube.com/shorts/skip-me",
       title: "Duplicate copy",
       visiblePageText: "duplicate loaded renderer",
+      platformAiLabelText: null,
       position: "nearby"
     },
     {
       title: "Nearby no URL but enough text",
       visiblePageText: "reddit story text to speech over minecraft parkour",
+      platformAiLabelText: null,
       position: "nearby"
     }
   ];
@@ -66,8 +71,25 @@ async function runLookaheadChecks(storagePath) {
   assert(partialShort.url.length > 0, "candidate converts to ExtractedShort URL fallback");
   assertEqual("candidate transcript remains null", partialShort.transcript, null);
 
+  const watchCandidates = scanLookaheadFromSnapshots([{
+    url: "https://www.youtube.com/watch?v=watch-next&list=ignored",
+    title: "AI voice viral clips compilation",
+    channelName: "Clip Mill",
+    visiblePageText: "repost compilation source unknown",
+    platformAiLabelText: null,
+    position: "nearby"
+  }], {
+    currentUrl: "https://www.youtube.com/watch?v=current",
+    limit: 2
+  });
+  assertEqual("watch recommendation video id parsed", watchCandidates[0].videoId, "watch-next");
+  assertEqual("watch recommendation converts as watch", candidateToExtractedShort(watchCandidates[0]).videoKind, "watch");
+
   const script = getYouTubeLookaheadScannerScript(2);
   assert(script.includes("browserScanLookahead"), "webview lookahead script generated");
+  const filterScript = getYouTubeRecommendationFilterScript(["watch-next", "bad id"]);
+  assert(filterScript.includes("browserFilterFlaggedRecommendations"), "recommendation filter script generated");
+  assert(!filterScript.includes("bad id"), "recommendation filter sanitizes video IDs");
 
   const service = createDesktopMockService({ storagePath });
   await service.updateSettings({
@@ -89,7 +111,7 @@ async function runLookaheadChecks(storagePath) {
   const handlers = registerHandlersForTest(service);
   assert(handlers.has("orislop:scoreLookaheadCandidates"), "lookahead IPC registered");
   await assertRejects(
-    () => handlers.get("orislop:scoreLookaheadCandidates")(null, { candidates: [{ extractionId: "bad" }] }),
+    () => handlers.get("orislop:scoreLookaheadCandidates")({ senderFrame: { url: "file:///orislop/index.html" } }, { candidates: [{ extractionId: "bad" }] }),
     "lookahead IPC rejects invalid candidate"
   );
 }
