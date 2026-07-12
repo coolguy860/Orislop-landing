@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createZipFromDirectoryContents } from "./lib/zip.mjs";
+import { createZipFromDirectoryContents, readZipEntries } from "./lib/zip.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webRoot = path.join(repoRoot, "apps", "web");
@@ -13,7 +13,7 @@ const assetRoot = path.join(distRoot, "assets");
 const downloadsRoot = path.join(distRoot, "downloads");
 const tscPath = findTscPath();
 const releaseId = "orislop-web-local-ai-polish-2026-07-11";
-const modelSource = readFileSync(path.join(repoRoot, "models", "orislop_ai_classifier_v1.json"), "utf8");
+const modelSource = readFileSync(path.join(repoRoot, "models", "orislop_ai_classifier_v1.json"), "utf8").replace(/\r\n?/g, "\n");
 const modelArtifactHash = createHash("sha256").update(modelSource).digest("hex");
 const modelFeatureCount = JSON.parse(modelSource).features.length;
 
@@ -158,6 +158,30 @@ function buildExtensionDownload() {
   });
 
   createZipFromDirectoryContents(extensionDist, zipPath);
+
+  const entries = readZipEntries(zipPath);
+  const requiredEntries = [
+    "manifest.json",
+    "aiClassifierModel.generated.js",
+    "background.js",
+    "contentScript.js",
+    "contentStyles.css",
+    "popup.html",
+    "popup.css",
+    "popup.js",
+    "release-info.json"
+  ];
+
+  for (const requiredEntry of requiredEntries) {
+    if (!entries.includes(requiredEntry)) {
+      throw new Error(`Embedded extension ZIP is missing ${requiredEntry}.`);
+    }
+  }
+  if (entries.some((entry) => entry.startsWith("dist/"))) {
+    throw new Error("Embedded extension ZIP must contain extension files at the archive root, not under dist/.");
+  }
+
+  console.log(`Embedded browser extension ZIP ready: ${zipPath} (${entries.length} files)`);
 }
 
 function writeReleaseInfo() {

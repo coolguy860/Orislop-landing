@@ -8,6 +8,7 @@
     "apps/*"
   ],
   "scripts": {
+    "build": "pnpm run web:build",
     "model:sync": "node scripts/syncAiClassifierArtifacts.mjs",
     "model:check": "node scripts/syncAiClassifierArtifacts.mjs --check",
     "typecheck": "node scripts/syncAiClassifierArtifacts.mjs --check && node scripts/runTsc.mjs --noEmit",

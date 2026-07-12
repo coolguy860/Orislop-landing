@@ -6,7 +6,7 @@ export const AI_CLASSIFIER_MODEL = {
   "trainingExamples": 111,
   "positiveExamples": 54,
   "negativeExamples": 57,
-  "artifactHash": "86c4aa6cea6de658cdf9dbbcae61245ed7a09c0f327ed3dc693fce07b3980e0b",
+  "artifactHash": "69c6b7bf4eb4435512c6e0908272ede50f04802b1f8dcaa4dbd4b9f3cc3c3c1e",
   "intercept": -0.486868,
   "slopThreshold": 0.58,
   "features": [

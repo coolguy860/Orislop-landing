@@ -9,7 +9,7 @@ const webTarget = path.join(repoRoot, "apps", "web", "src", "lib", "aiClassifier
 const extensionTarget = path.join(repoRoot, "apps", "extension", "src", "aiClassifierModel.generated.js");
 const checkOnly = process.argv.includes("--check");
 
-const rawModel = readFileSync(modelPath, "utf8");
+const rawModel = readFileSync(modelPath, "utf8").replace(/\r\n?/g, "\n");
 const parsed = JSON.parse(rawModel);
 validateModel(parsed);
 
