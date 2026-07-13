@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createZipFromDirectoryContents, readZipEntries } from "./lib/zip.mjs";
@@ -101,6 +101,13 @@ writeFileSync(path.join(distRoot, "privacy.html"), `<!doctype html>
           storage. These records are local to your browser profile. They are used to show counts and recent
           reasons in the popup.
         </p>
+        <p>
+          Extension 0.4.0 can send supported YouTube, Instagram, and TikTok page or media URLs to the Orislop
+          detector companion on your own device at 127.0.0.1. The companion may download that public media
+          temporarily for spatial and temporal frame analysis, deletes the temporary file after the scan,
+          and keeps only an in-memory decision cache. Public model weights are downloaded from the named
+          Hugging Face repositories. Orislop does not provide a cloud inference server for this path.
+        </p>
         <h2>Local Video Demo</h2>
         <p>
           The optional local video demo samples a file selected from your device with browser video and
@@ -151,6 +158,7 @@ function rewriteModuleImports(directory) {
 function buildExtensionDownload() {
   const extensionDist = path.join(repoRoot, "apps", "extension", "dist");
   const zipPath = path.join(downloadsRoot, "orislop-browser-extension.zip");
+  const standaloneZipPath = path.join(repoRoot, "dist", "orislop-browser-extension.zip");
 
   execFileSync(process.execPath, [path.join(repoRoot, "scripts", "buildBrowserExtension.mjs")], {
     cwd: repoRoot,
@@ -158,6 +166,8 @@ function buildExtensionDownload() {
   });
 
   createZipFromDirectoryContents(extensionDist, zipPath);
+  mkdirSync(path.dirname(standaloneZipPath), { recursive: true });
+  copyFileSync(zipPath, standaloneZipPath);
 
   const entries = readZipEntries(zipPath);
   const requiredEntries = [
@@ -181,7 +191,7 @@ function buildExtensionDownload() {
     throw new Error("Embedded extension ZIP must contain extension files at the archive root, not under dist/.");
   }
 
-  console.log(`Embedded browser extension ZIP ready: ${zipPath} (${entries.length} files)`);
+  console.log(`Embedded and standalone browser extension ZIPs ready: ${zipPath} (${entries.length} files)`);
 }
 
 function writeReleaseInfo() {

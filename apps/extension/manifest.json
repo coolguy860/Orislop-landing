@@ -1,10 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "Orislop Clean YouTube",
-  "version": "0.2.0",
-  "description": "Hide low-value YouTube videos locally with Orislop's lightweight browser scoring.",
+  "name": "Orislop Clean Feeds",
+  "version": "0.4.0",
+  "description": "Use required local Ollama plus Orislop spatial and temporal detectors to hide slop and synthetic media.",
   "permissions": ["storage"],
-  "host_permissions": ["https://www.youtube.com/*", "https://m.youtube.com/*"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://m.youtube.com/*",
+    "https://www.instagram.com/*",
+    "https://www.tiktok.com/*",
+    "http://127.0.0.1:11434/*",
+    "http://localhost:11434/*",
+    "http://127.0.0.1:4317/*",
+    "http://localhost:4317/*"
+  ],
   "icons": {
     "16": "icons/icon16.svg",
     "32": "icons/icon32.svg",
@@ -28,8 +37,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*", "https://m.youtube.com/*"],
-      "js": ["aiClassifierModel.generated.js", "controlCore.js", "contentScript.js"],
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*",
+        "https://www.instagram.com/*",
+        "https://www.tiktok.com/*"
+      ],
+      "js": ["aiClassifierModel.generated.js", "classifier.js", "controlCore.js", "contentScript.js"],
       "css": ["contentStyles.css"],
       "run_at": "document_idle"
     }

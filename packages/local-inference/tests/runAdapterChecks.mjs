@@ -31,9 +31,14 @@ async function runAdapterChecks() {
 
   const config = JSON.parse(await readFile("configs/model_adapters.json", "utf8"));
   assert.equal(config.version, 1, "model adapter config version is present");
+  const requiredBrowserAdapters = new Set(["spatial_detector", "temporal_detector"]);
   for (const adapter of Object.values(config.adapters)) {
-    assert.equal(adapter.enabled, false, `${adapter.id} is disabled by default`);
+    assert.equal(adapter.enabled, requiredBrowserAdapters.has(adapter.id), `${adapter.id} has the expected default state`);
     assert(!hasAbsolutePath(adapter), `${adapter.id} config avoids hardcoded absolute paths`);
+  }
+  for (const id of requiredBrowserAdapters) {
+    assert.equal(config.adapters[id].mode, "localhost", `${id} uses the browser-safe localhost bridge`);
+    assert.equal(config.adapters[id].endpoint, "http://127.0.0.1:4317/v1/analyze", `${id} uses the loopback detector endpoint`);
   }
 
   const disabledExisting = await createExistingAiDetectorAdapter().analyze(request);

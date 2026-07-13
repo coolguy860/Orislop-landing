@@ -6,7 +6,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const extensionRoot = path.join(repoRoot, "apps", "extension");
 const sourceRoot = path.join(extensionRoot, "src");
 const distRoot = path.join(extensionRoot, "dist");
-const releaseId = "orislop-extension-local-ai-0.2.0-2026-07-11";
+const releaseId = "orislop-extension-spatiotemporal-0.4.0-2026-07-13";
 
 rmSync(distRoot, { recursive: true, force: true });
 mkdirSync(distRoot, { recursive: true });
@@ -15,6 +15,7 @@ mkdirSync(path.join(distRoot, "icons"), { recursive: true });
 const files = [
   ["manifest.json", "manifest.json"],
   ["src/aiClassifierModel.generated.js", "aiClassifierModel.generated.js"],
+  ["src/classifier.js", "classifier.js"],
   ["src/controlCore.js", "controlCore.js"],
   ["src/background.js", "background.js"],
   ["src/contentScript.js", "contentScript.js"],
@@ -41,38 +42,25 @@ writeFileSync(path.join(distRoot, "release-info.json"), `${JSON.stringify({
   releaseId,
   builtAt: new Date().toISOString(),
   app: "orislop-browser-extension",
-  version: "0.2.0",
+  version: "0.4.0",
   requiredQaFixes: [
     "manifest declares 16/32/48/128/256 icons",
-    "background scorer includes expanded slop-pattern heuristics",
-    "content script scans YouTube cards and current videos",
-    "only Skip-rated current videos auto-skip, and only after the user enables auto-skip",
-    "Questionable videos are marked for review and are never auto-skipped",
-    "AI/synthetic disclosures contribute to local scoring without bypassing user controls",
-    "feed cards hide only while feed hiding is enabled",
-    "likely bot comments hide only after the user enables comment hiding",
-    "visible worker/debug status pill is removed",
-    "scan loop is throttled and uses IntersectionObserver when available",
-    "candidate scan still caps lookahead at 10 videos",
-    "background scoring uses an adaptive worker lane cap instead of a fixed 10-lane loop",
-    "video-bound navigation retries cancel after success, video change, or Watch anyway",
-    "session revisit suppression and a consecutive-skip limit prevent skip loops",
-    "first-run auto-skip and bot-comment hiding are off",
-    "setting changes cancel pending skips and restore disabled hidden UI",
-    "flagged and skipped history writes are serialized to prevent lost updates",
-    "warning UI renders as a side overlay instead of a top banner",
-    "content scoring uses local fast path before background scoring",
-    "popup preview uses local storage fallback outside extension context",
-    "injected controls expose live-region semantics, focus handling, and Escape cancellation",
-    "popup switches expose aria-checked state and keyboard focus styling",
-    "popup data clearing requires confirmation and reports an accessible status",
-    "Orislop AI Classifier v1 runs locally over visible text and metadata",
-    "content and background scoring load the canonical generated AI model artifact",
-    "missing generated AI model uses an honest heuristic-only fallback",
-    "visible metadata is not mislabeled as a transcript source",
-    "extension source scores expose heuristic, AI classifier, transcript, channel, and spatiotemporal status",
-    "advanced detector escalation flag exists and remains off by default",
-    "no remote API calls or model downloads"
+    "verdicts are binary: Don't skip or Skip",
+    "candidate scanning caps lookahead at exactly 10 items",
+    "Skip hides items and never emits scroll, wheel, PageDown, ArrowDown, or next-video actions",
+    "explicit AI/synthetic disclosures and synthetic narration trigger a non-vetoable 100/100 Skip",
+    "all non-AI verdicts come from the required Ollama classifier",
+    "gonnerthetooner/orislop-fusion inspects sampled video frames through the local detector bridge",
+    "gonnerthetooner/deepfake-temporal-moe inspects short-, mid-, long-, and extra-long frame windows",
+    "strong spatial or temporal synthetic-media results trigger a non-vetoable 100/100 Skip",
+    "uncached visual scans are queued locally and polled without blocking or scrolling the feed",
+    "decisions are cached by stable platform item id for consistent behavior",
+    "the yellow decision cover is absolutely constrained to the video or Short surface",
+    "YouTube, Instagram Reels, and TikTok adapters are isolated by host",
+    "Apache-2.0 Qwen2.5 1.5B Ollama classification uses structured local output",
+    "localhost Ollama access is a required host permission rather than an optional toggle",
+    "localhost detector bridge access is a required host permission",
+    "background and content scoring share the same classifier implementation"
   ]
 }, null, 2)}\n`);
 

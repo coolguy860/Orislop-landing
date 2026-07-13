@@ -15,4 +15,5 @@ out/
 *.onnx
 __pycache__/
 .cache/
+.venv-detector/
 .DS_Store

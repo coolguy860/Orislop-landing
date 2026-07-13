@@ -27,6 +27,8 @@ pnpm run web:test
 pnpm run extension:build
 pnpm run extension:test
 pnpm run extension:zip
+pnpm detector:setup
+pnpm detector:start
 pnpm run ai:train
 pnpm run ai:evaluate
 pnpm run test:ai-classifier
@@ -89,9 +91,11 @@ The ZIP is written to `dist/orislop-browser-extension.zip`.
 
 ## Current Scoring Scope
 
-The static website and extension use local transparent heuristics plus Orislop AI Classifier v1, a small TF-IDF logistic-regression metadata model. They inspect URL, title, channel name where available, visible text, captions/descriptions when available, optional transcript text, YouTube AI/synthetic disclosure text, feed-card text, and obvious bot-comment patterns. They do not download YouTube videos, call remote APIs, scrape private data, or run the full temporal/spatial detector in the browser.
+The static website remains a metadata-only demo. Extension version 0.4.0 uses local transparent heuristics, Orislop AI Classifier v1, required Ollama transcript classification, and the required loopback detector bridge. The bridge runs `gonnerthetooner/orislop-fusion` plus `gonnerthetooner/deepfake-temporal-moe` outside Chrome and returns spatial/temporal synthetic-media probabilities.
 
-The larger temporal/spatial detector pipeline is represented in the repo as optional future integration work. The browser-hosted build must not claim it is running the full PyTorch detector unless a separate local companion or server-side inference path is explicitly added.
+The bridge may temporarily download supported public feed media for frame analysis, deletes it after the scan, and keeps only an in-memory decision cache. It listens on `127.0.0.1`, rejects normal website origins, and does not provide cloud inference. Model weights are downloaded once from the two public Hugging Face repositories during local setup/use.
+
+See `DEPLOY_BROWSER_EXTENSION.md` for the required Ollama and detector setup.
 
 See:
 

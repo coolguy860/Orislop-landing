@@ -94,7 +94,7 @@ The web analyzer runs:
 
 In the combined path, transcript rules are also a separate weighted source, so transcript text is withheld from the classifier invocation there. Standalone classifier inference still supports transcript input. This prevents the same transcript phrase from being counted twice.
 
-The browser extension runs the same concept over visible YouTube DOM metadata. It does not run heavy spatiotemporal inference.
+The browser extension runs the same metadata classifier, then adds required Ollama and the loopback spatial/temporal detector bridge. Heavy PyTorch inference runs in the companion process, not inside Chrome.
 
 ## Limitations
 
@@ -102,6 +102,6 @@ The browser extension runs the same concept over visible YouTube DOM metadata. I
 - YouTube metadata can be incomplete or delayed.
 - The model can overfit seed labels.
 - The static website cannot inspect YouTube video pixels or audio.
-- Spatiotemporal detector wrappers exist, but they are not active in the public static web or extension path.
+- Spatiotemporal inference is active only in extension 0.4.0 when the required local detector bridge is running; it remains unavailable in the public static website.
 
 Add more labeled rows to `data/slop_training_seed.csv`, retrain, evaluate false positives, then update runtime weights if the evaluation is acceptable.

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "spatialSynthetic": 0.82,
+  "temporalSynthetic": 0.72,
+  "combinedSynthetic": 0.72,
+  "combinedWeights": {
+    "spatial": 0.45,
+    "temporal": 0.55
+  },
+  "behavior": "Any strong spatial, temporal, or combined synthetic signal produces a non-vetoable 100/100 Skip."
+}

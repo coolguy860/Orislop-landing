@@ -88,12 +88,12 @@ assert.equal(webRelease.aiClassifierFeatureCount, 220);
 assert.match(webRelease.aiClassifierArtifactHash, /^[a-f0-9]{64}$/);
 
 const extensionRelease = readZipJson(extensionZip, "release-info.json");
-assert.equal(extensionRelease.version, "0.2.0");
-assert.equal(extensionRelease.releaseId, "orislop-extension-local-ai-0.2.0-2026-07-11");
+assert.equal(extensionRelease.version, "0.4.0");
+assert.equal(extensionRelease.releaseId, "orislop-extension-spatiotemporal-0.4.0-2026-07-13");
 assert.ok(Array.isArray(extensionRelease.requiredQaFixes) && extensionRelease.requiredQaFixes.length > 0);
 
 const manifest = readZipJson(extensionZip, "manifest.json");
-assert.equal(manifest.version, "0.2.0");
+assert.equal(manifest.version, "0.4.0");
 assert.equal(manifest.icons["128"], "icons/icon128.svg");
 assert.equal(manifest.icons["256"], "icons/icon256.svg");
 
@@ -132,8 +132,8 @@ for (const entry of extensionEntries.filter((name) => name !== "release-info.jso
     `Standalone and embedded extension differ at ${entry}`
   );
 }
-assertNoSensitiveText(siteZip, siteEntries, "static website ZIP");
-assertNoSensitiveText(extensionZip, extensionEntries, "browser extension ZIP");
+assertNoSensitiveText(siteZip, siteEntries, "static website ZIP", false);
+assertNoSensitiveText(extensionZip, extensionEntries, "browser extension ZIP", true);
 
 console.log("release artifact verification passed");
 console.log(`static website ZIP: ${siteZip} (${statSync(siteZip).size} bytes)`);
@@ -167,13 +167,13 @@ function assertArchiveMatchesDirectory(zipPath, directory, entries, label) {
   }
 }
 
-function assertNoSensitiveText(zipPath, entries, label) {
+function assertNoSensitiveText(zipPath, entries, label, allowLocalhost) {
   const textExtensions = new Set([".html", ".js", ".css", ".json", ".svg", ".txt"]);
   const secretPatterns = [
     /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
-    /(?:api[_-]?key|client[_-]?secret|access[_-]?token)\s*[:=]\s*["'][^"']{12,}/i,
-    /https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/i
+    /(?:api[_-]?key|client[_-]?secret|access[_-]?token)\s*[:=]\s*["'][^"']{12,}/i
   ];
+  if (!allowLocalhost) secretPatterns.push(/https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/i);
   for (const entry of entries) {
     if (!textExtensions.has(path.extname(entry).toLowerCase())) continue;
     const text = readZipEntry(zipPath, entry).toString("utf8");

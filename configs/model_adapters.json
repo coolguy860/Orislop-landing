@@ -55,40 +55,49 @@
     "spatial_detector": {
       "id": "spatial_detector",
       "kind": "spatial_detector",
-      "enabled": false,
-      "mode": "subprocess",
-      "hfRepoId": "orislop-fusion",
+      "enabled": true,
+      "mode": "localhost",
+      "hfRepoId": "gonnerthetooner/orislop-fusion",
+      "endpoint": "http://127.0.0.1:4317/v1/analyze",
       "localModelDirectory": null,
       "scriptPath": "core/spatial.py",
       "modelPath": null,
       "checkpointPath": null,
-      "notes": "Optional wrapper for core/spatial.py / orislop-fusion. Disabled by default; no automatic downloads or startup imports."
+      "notes": "Required browser-extension spatial model. The localhost bridge downloads public weights once and keeps inference local."
     },
     "temporal_detector": {
       "id": "temporal_detector",
       "kind": "temporal_detector",
-      "enabled": false,
-      "mode": "subprocess",
-      "hfRepoId": "deepfake-temporal-moe",
+      "enabled": true,
+      "mode": "localhost",
+      "hfRepoId": "gonnerthetooner/deepfake-temporal-moe",
+      "endpoint": "http://127.0.0.1:4317/v1/analyze",
       "localModelDirectory": null,
-      "detectorRoot": null,
-      "scriptPath": null,
+      "detectorRoot": "core/temporal_detector",
+      "scriptPath": "core/temporal_detector/temporal_deepfake_moe_hf_colab.py",
       "checkpointPath": null,
-      "checkpointPaths": [],
-      "thresholdPath": null,
+      "checkpointPaths": [
+        "a100_high_vram_60gb_v1/stage1_micro_latest.pt",
+        "a100_high_vram_60gb_v1/stage1_mid_latest.pt",
+        "a100_high_vram_60gb_v1/stage1_long_latest.pt",
+        "a100_high_vram_60gb_v1/stage1_extra_long_latest.pt",
+        "a100_balanced_fusion_v4/stage2_fusion_latest.pt",
+        "a100_balanced_fusion_v4/stage3_calibration.pt"
+      ],
+      "thresholdPath": "configs/detector_thresholds.json",
       "requiredFiles": [
         "temporal_deepfake_moe_hf_colab.py",
         "final_pipeline_core.py",
         "full_pipeline_utils.py"
       ],
-      "notes": "Optional wrapper for the Phase 1 temporal detector / deepfake-temporal-moe. Configure paths locally; missing checkpoints must return unavailable."
+      "notes": "Required browser-extension temporal MoE. The bridge uses the balanced-v4 fusion/calibration with high-VRAM stage-1 experts."
     },
     "fusion_detector": {
       "id": "fusion_detector",
       "kind": "fusion_detector",
       "enabled": false,
       "mode": "disabled",
-      "hfRepoId": "orislop-fusion",
+      "hfRepoId": "gonnerthetooner/orislop-fusion",
       "localModelDirectory": null,
       "modelPath": null,
       "checkpointPath": null,

@@ -8,266 +8,246 @@ import vm from "node:vm";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const distRoot = path.join(repoRoot, "apps", "extension", "dist");
 
-execFileSync(process.execPath, [path.join(repoRoot, "scripts", "buildBrowserExtension.mjs")], {
-  cwd: repoRoot,
-  stdio: "inherit"
-});
+execFileSync(process.execPath, [path.join(repoRoot, "scripts", "buildBrowserExtension.mjs")], { cwd: repoRoot, stdio: "inherit" });
 
 const requiredFiles = [
-  "manifest.json",
-  "aiClassifierModel.generated.js",
-  "controlCore.js",
-  "background.js",
-  "contentScript.js",
-  "contentStyles.css",
-  "icons/icon16.svg",
-  "icons/icon32.svg",
-  "icons/icon48.svg",
-  "icons/icon128.svg",
-  "icons/icon256.svg",
-  "release-info.json",
-  "popup.html",
-  "popup.css",
-  "popup.js"
+  "manifest.json", "aiClassifierModel.generated.js", "classifier.js", "controlCore.js", "background.js",
+  "contentScript.js", "contentStyles.css", "popup.html", "popup.css", "popup.js", "release-info.json",
+  "icons/icon16.svg", "icons/icon32.svg", "icons/icon48.svg", "icons/icon128.svg", "icons/icon256.svg"
 ];
+for (const file of requiredFiles) assert.ok(existsSync(path.join(distRoot, file)), `Expected ${file} in extension dist`);
 
-for (const file of requiredFiles) {
-  assert.ok(existsSync(path.join(distRoot, file)), `Expected ${file} in extension dist`);
+const manifest = readJson("manifest.json");
+assert.equal(manifest.manifest_version, 3);
+assert.equal(manifest.version, "0.4.0");
+assert.deepEqual(manifest.permissions, ["storage"]);
+for (const origin of ["https://www.youtube.com/*", "https://www.instagram.com/*", "https://www.tiktok.com/*"]) {
+  assert.ok(manifest.host_permissions.includes(origin), `host permission missing: ${origin}`);
+  assert.ok(manifest.content_scripts[0].matches.includes(origin), `content-script match missing: ${origin}`);
+}
+assert.ok(manifest.host_permissions.includes("http://127.0.0.1:11434/*"));
+assert.ok(manifest.host_permissions.includes("http://127.0.0.1:4317/*"));
+assert.equal(manifest.optional_host_permissions, undefined, "Ollama localhost access must be required, not optional");
+assert.deepEqual(manifest.content_scripts[0].js, ["aiClassifierModel.generated.js", "classifier.js", "controlCore.js", "contentScript.js"]);
+
+const generatedModel = read("aiClassifierModel.generated.js");
+const classifierSource = read("classifier.js");
+const controlCoreSource = read("controlCore.js");
+const contentSource = read("contentScript.js");
+const styles = read("contentStyles.css");
+const background = read("background.js");
+const popupHtml = read("popup.html");
+const popupJs = read("popup.js");
+
+for (const [name, source] of [["classifier", classifierSource], ["control core", controlCoreSource], ["content script", contentSource], ["background", background], ["popup", popupJs]]) {
+  assert.doesNotThrow(() => new Function(source), `${name} should parse as JavaScript`);
 }
 
-const manifest = JSON.parse(readFileSync(path.join(distRoot, "manifest.json"), "utf8"));
-assert.equal(manifest.manifest_version, 3);
-assert.equal(manifest.version, "0.2.0");
-assert.deepEqual(manifest.permissions, ["storage"]);
-assert.ok(manifest.host_permissions.includes("https://www.youtube.com/*"));
-assert.ok(manifest.content_scripts[0].matches.includes("https://www.youtube.com/*"));
-assert.deepEqual(manifest.content_scripts[0].js, ["aiClassifierModel.generated.js", "controlCore.js", "contentScript.js"]);
-assert.ok(manifest.content_scripts[0].css.includes("contentStyles.css"));
-assert.equal(manifest.background.service_worker, "background.js");
-assert.equal(manifest.icons["16"], "icons/icon16.svg");
-assert.equal(manifest.icons["32"], "icons/icon32.svg");
-assert.equal(manifest.icons["48"], "icons/icon48.svg");
-assert.equal(manifest.icons["128"], "icons/icon128.svg");
-assert.equal(manifest.icons["256"], "icons/icon256.svg");
-assert.equal(manifest.action.default_icon["48"], "icons/icon48.svg");
-assert.equal(manifest.action.default_icon["128"], "icons/icon128.svg");
-
-const contentScript = readFileSync(path.join(distRoot, "contentScript.js"), "utf8");
-const generatedAiModel = readFileSync(path.join(distRoot, "aiClassifierModel.generated.js"), "utf8");
-const contentStyles = readFileSync(path.join(distRoot, "contentStyles.css"), "utf8");
-assert.doesNotThrow(() => new Function(contentScript), "content script should parse as JavaScript");
-assert.ok(contentScript.includes("MutationObserver"));
-assert.ok(contentScript.includes("orislop-hidden-card"));
-assert.ok(contentScript.includes("orislop-callout-card"));
-assert.ok(!contentScript.includes("orislop-status-pill"), "content script should not render the old worker/debug status pill");
-assert.ok(contentScript.includes("orislop-autoskip-toast"));
-assert.ok(contentScript.includes("chrome.storage.local"));
-assert.ok(contentScript.includes("scoreStaticSlop"));
-assert.ok(contentScript.includes("orislop.extension.skippedLog"));
-assert.ok(contentScript.includes("orislop.extension.settings"));
-assert.ok(contentScript.includes("attemptAutoSkip"));
-assert.ok(contentScript.includes("showCurrentSkipShield"));
-assert.ok(contentScript.includes("CURRENT_SKIP_SHIELD_ID"));
-assert.ok(contentScript.includes("auto_skipped_short"));
-assert.ok(contentScript.includes("auto_skipped_watch"));
-assert.ok(contentScript.includes("hidden_bot_comment"));
-assert.ok(contentScript.includes("hidden_card"));
-assert.ok(contentScript.includes("LOOKAHEAD_LIMIT"));
-assert.ok(contentScript.includes("MAX_SCAN_PER_PASS = 28"));
-assert.ok(contentScript.includes("COMMENT_SCAN_LIMIT = 10"));
-assert.ok(contentScript.includes("SCAN_DEBOUNCE_MS = 280"));
-assert.ok(contentScript.includes("WORKER_POOL_SIZE"));
-assert.ok(contentScript.includes("Math.min(4"));
-assert.ok(contentScript.includes("IntersectionObserver"));
-assert.ok(contentScript.includes("observeCandidateElements"));
-assert.ok(contentScript.includes('backgroundScoringState = "unknown"'));
-assert.ok(contentScript.includes("backgroundRetryAfter"));
-assert.ok(contentScript.includes("BACKGROUND_RESPONSE_TIMEOUT_MS"));
-assert.ok(contentScript.includes("orislop-ai-classifier-v1"));
-assert.ok(contentScript.includes("AI_MODEL_INTERCEPT"));
-assert.ok(contentScript.includes("globalThis.ORISLOP_AI_CLASSIFIER_V1"));
-assert.ok(generatedAiModel.includes('"trainingExamples": 111'));
-assert.ok(contentScript.includes("aiClassifierUsed"));
-assert.ok(contentScript.includes("spatiotemporalUsed: false"));
-assert.ok(contentScript.includes("sourceScores"));
-assert.ok(contentScript.includes("findChannelName"));
-assert.ok(contentScript.includes("findDurationSeconds"));
-assert.ok(contentScript.includes("advancedDetection"));
-assert.ok(contentScript.includes("BOT_COMMENT_RULES"));
-assert.ok(contentScript.includes("scanLikelyBotComments"));
-assert.ok(contentScript.includes("scoreBotComment"));
-assert.ok(contentScript.includes("hideBotComment"));
-assert.ok(contentScript.includes("hideBotComments"));
-assert.ok(contentScript.includes("orislop-side-callout-host"));
-assert.ok(!contentScript.includes("Warning-level auto-skip"));
-assert.ok(!contentScript.includes("if (settingsCache.autoSkip ||"));
-assert.ok(!contentScript.includes("workers ${"), "content script should not display worker count UI");
-assert.ok(contentScript.includes("findLookaheadCandidateElements"));
-assert.ok(contentScript.includes("scoreWithWorkers"));
-assert.ok(contentScript.includes("signalBreakdown"));
-assert.ok(contentScript.includes("isSongOrLyricsContext"));
-assert.ok(contentScript.includes("orislop.scoreBatch"));
-assert.ok(contentScript.includes("sendScoreBatchToBackground"));
-assert.ok(!contentScript.includes("new Worker"), "content scripts should not create page-origin workers on YouTube");
-assert.ok(contentScript.includes("scanQueued"), "scan events during active worker scoring should be queued");
-assert.ok(contentScript.includes("isCurrentVideoCandidate"), "current videos should skip instead of being hidden in place");
-assert.ok(contentScript.includes("preSkipScores"), "nearby Shorts should be pre-marked instead of hidden before they become current");
-assert.ok(contentScript.includes("pre_skip"));
-assert.ok(contentScript.includes("isActiveShortsScrollerCandidate"));
-assert.ok(contentScript.includes("Auto-skip started for a Skip-rated video"));
-assert.ok(contentScript.includes("ArrowDown"));
-assert.ok(contentScript.includes("PageDown"));
-assert.ok(contentScript.includes("WheelEvent"));
-assert.ok(contentScript.includes(".ytp-next-button"));
-assert.ok(contentScript.includes("SIGNATURE_ATTR"), "cards must be rescored when YouTube loads metadata late");
-assert.ok(contentScript.includes("yt-page-data-updated"), "YouTube navigation/data updates should trigger rescans");
-assert.ok(contentScript.includes("altered or synthetic content"), "platform AI disclosure text should be detected");
-assert.ok(contentScript.includes("findVisibleAiDisclosureText"), "content script should extract visible AI disclosures");
-assert.ok(contentScript.includes("hasPlatformAiDisclosure"), "content script should hard-detect AI disclosure text");
-assert.ok(contentScript.includes("YouTube AI/synthetic disclosure"));
-assert.ok(contentScript.includes("significantly edited or digitally generated"));
-assert.ok(contentScript.includes("generated by ai"));
-assert.ok(contentScript.includes('aria-live", "assertive"'));
-assert.ok(contentScript.includes("handleEscapeKey"));
-assert.ok(contentScript.includes("restoreHiddenCards"));
-assert.ok(contentScript.includes("restoreHiddenComments"));
-assert.ok(contentScript.includes("historyWriter.append"));
-assert.ok(contentScript.includes("ytd-rich-grid-media"), "newer YouTube rich-grid cards should be scanned");
-assert.ok(!contentScript.includes("fetch("), "Extension must not call remote APIs");
-assert.ok(contentStyles.includes(".orislop-side-callout-host"));
-assert.ok(contentStyles.includes("position: absolute"));
-assert.ok(contentStyles.includes("right: 8px"));
-assert.ok(!contentStyles.includes("orislop-status-pill"));
-
-const extensionRuntime = createContentScriptRuntime({ generatedAiModel, contentScript });
-const obviousSlop = extensionRuntime.scoreOneCandidate({
-  url: "https://www.youtube.com/shorts/abcdefghijk",
+const classifier = createClassifierRuntime(generatedModel, classifierSource);
+const obviousSlop = classifier.scoreCandidate({
+  platform: "youtube",
+  itemId: "slop123",
+  url: "https://www.youtube.com/shorts/slop123",
   title: "AI voice Reddit story over Minecraft parkour",
   visibleText: "Text to speech over looping gameplay. Follow for part 2.",
-  channelName: "Story Bot",
-  durationSeconds: 58
+  channelName: "Story Bot"
 });
-assert.equal(obviousSlop.aiClassifierUsed, true, "Extension must load the generated AI artifact");
-assert.equal(obviousSlop.aiClassifier.modelId, "orislop-ai-classifier-v1");
 assert.equal(obviousSlop.recommendation, "skip");
-assert.ok(obviousSlop.sourceScores.aiClassifier >= 60);
+assert.equal(obviousSlop.score, 100);
+assert.equal(obviousSlop.hardAiSynthetic, true);
+assert.ok(obviousSlop.strongEvidenceCount >= 2);
 
-const usefulVideo = extensionRuntime.scoreOneCandidate({
-  url: "https://www.youtube.com/watch?v=abcdefghijk",
-  title: "How rainfall forms in mountain regions",
-  visibleText: "A sourced science lesson explaining evaporation and condensation.",
-  channelName: "Earth Science Lab",
-  durationSeconds: 480
+const recycledAiClips = classifier.scoreCandidate({
+  platform: "tiktok",
+  itemId: "clips123",
+  url: "https://www.tiktok.com/@farm/video/clips123",
+  title: "Viral clips compilation",
+  visibleText: "AI voice narration. Reposted clips with no commentary.",
+  channelName: "Viral Vault"
 });
-assert.equal(usefulVideo.aiClassifierUsed, true);
-assert.equal(usefulVideo.recommendation, "watch");
+assert.equal(recycledAiClips.recommendation, "skip");
 
-const fallbackRuntime = createContentScriptRuntime({ generatedAiModel: null, contentScript });
-const fallbackScore = fallbackRuntime.scoreOneCandidate({
-  url: "https://www.youtube.com/shorts/abcdefghijk",
-  title: "AI voice Reddit story over Minecraft parkour",
-  visibleText: "Text to speech over looping gameplay.",
-  channelName: "Story Bot",
-  durationSeconds: 58
+const educationalShort = classifier.scoreCandidate({
+  platform: "youtube",
+  itemId: "edu123",
+  url: "https://www.youtube.com/shorts/edu123",
+  title: "How black holes bend light",
+  visibleText: "A physics professor explains gravitational lensing with evidence and a classroom diagram.",
+  channelName: "Minute Science Lab"
 });
-assert.equal(fallbackScore.aiClassifierUsed, false, "Missing generated model must use an honest heuristic fallback");
-assert.equal(fallbackScore.sourceScores.aiClassifier, null);
-assert.ok(fallbackScore.fallbackReasons.some((reason) => reason.includes("not loaded")));
+assert.equal(educationalShort.recommendation, "watch");
+assert.equal(educationalShort.educationalProtected, true);
 
-const background = readFileSync(path.join(distRoot, "background.js"), "utf8");
-assert.doesNotThrow(() => new Function(background), "background script should parse as JavaScript");
-assert.ok(background.includes("chrome.runtime.onMessage"));
-assert.ok(background.includes('importScripts("aiClassifierModel.generated.js")'));
-assert.ok(background.includes("globalThis.ORISLOP_AI_CLASSIFIER_V1"));
-assert.ok(background.includes("Math.min(4"));
-assert.ok(background.includes("orislop.scoreBatch"));
-assert.ok(background.includes("orislop-ai-classifier-v1"));
-assert.ok(background.includes("aiClassifierUsed"));
-assert.ok(background.includes("spatiotemporalUsed: false"));
-assert.ok(background.includes("sourceScores"));
-assert.ok(background.includes("scoreBatch"));
-assert.ok(background.includes("altered or synthetic content"));
-assert.ok(background.includes("significantly edited or digitally generated"));
-assert.ok(background.includes("generated by ai"));
-assert.ok(background.includes("weight: 100"));
-assert.ok(background.includes("Reddit/TTS background-video format"));
-assert.ok(background.includes("AI voice or synthetic narration"));
-assert.ok(background.includes("Stacked slop-format pattern"));
-assert.ok(background.includes("Long low-originality compilation"));
-assert.ok(background.includes("Satisfying/ASMR filler context"));
-assert.ok(background.includes("THRESHOLDS"));
-assert.ok(background.includes("signalBreakdown"));
-assert.ok(background.includes("isSongOrLyricsContext"));
-assert.ok(!background.includes("fetch("), "Background scorer must not call remote APIs");
+const aiDisclosureOnly = classifier.scoreCandidate({
+  platform: "youtube",
+  itemId: "art123",
+  url: "https://www.youtube.com/shorts/art123",
+  title: "Animating a watercolor landscape",
+  visibleText: "Created or altered with AI. Original artist process and commentary.",
+  channelName: "Mira Studio"
+});
+assert.equal(aiDisclosureOnly.recommendation, "skip", "AI disclosure must trigger the hard Skip override");
+assert.equal(aiDisclosureOnly.score, 100);
+assert.equal(aiDisclosureOnly.hardAiSynthetic, true);
 
-const popupHtml = readFileSync(path.join(distRoot, "popup.html"), "utf8");
-assert.ok(popupHtml.includes("autoSkipToggle"));
-assert.ok(popupHtml.includes("hideFeedCardsToggle"));
-assert.ok(popupHtml.includes("hideBotCommentsToggle"));
-assert.ok(popupHtml.includes("advancedDetectionToggle"));
-assert.ok(popupHtml.includes("role=\"switch\""));
-assert.ok(popupHtml.includes("aria-label=\"Hide likely bot comments\""));
-assert.ok(popupHtml.includes("skippedList"));
-assert.ok(popupHtml.includes("flaggedList"));
-assert.ok(popupHtml.includes("clearAllDataButton"));
-assert.ok(popupHtml.includes("clearConfirmation"));
-assert.ok(popupHtml.includes('role="status"'));
-assert.ok(popupHtml.includes("contextWarning"));
-assert.ok(popupHtml.includes("YouTube scanning is unavailable"));
-assert.ok(popupHtml.includes("apps/extension/dist"));
-assert.ok(popupHtml.includes("orislop-fusion"));
+const explicitAiGenerated = classifier.scoreCandidate({
+  platform: "tiktok",
+  itemId: "aicat123",
+  url: "https://www.tiktok.com/@farm/video/aicat123",
+  title: "AI generated cat video",
+  visibleText: "Made with AI",
+  channelName: "Cat Factory"
+});
+assert.equal(explicitAiGenerated.recommendation, "skip");
+assert.equal(explicitAiGenerated.score, 100);
+
+const normalPersonalShort = classifier.scoreCandidate({
+  platform: "instagram",
+  itemId: "normal123",
+  url: "https://www.instagram.com/reel/normal123/",
+  title: "Morning run",
+  visibleText: "A quick clip from my trail run before work.",
+  channelName: "maya"
+});
+assert.equal(normalPersonalShort.recommendation, "watch", "short or ordinary titles must stay visible");
+
+const protectedByOllama = classifier.mergeOllamaDecision(obviousSlop, {
+  available: true, verdict: "dont_skip", confidence: 0.9, reason: "Original educational commentary was detected"
+});
+assert.equal(protectedByOllama.recommendation, "skip", "Ollama cannot veto the hard AI/synthetic rule");
+assert.equal(protectedByOllama.score, 100);
+assert.equal(protectedByOllama.ollamaUsed, false);
+
+const nonAiSlop = classifier.scoreCandidate({
+  platform: "youtube",
+  itemId: "farm123",
+  url: "https://www.youtube.com/shorts/farm123",
+  title: "Reddit story over Minecraft parkour",
+  visibleText: "Follow for part two. Wait for the ending.",
+  channelName: "Story Vault"
+});
+assert.equal(nonAiSlop.recommendation, "watch", "non-AI heuristics must wait for required Ollama");
+const ollamaSkipped = classifier.mergeOllamaDecision(nonAiSlop, {
+  available: true, verdict: "skip", confidence: 0.82, reason: "Recycled story over unrelated gameplay"
+});
+assert.equal(ollamaSkipped.recommendation, "skip");
+assert.equal(ollamaSkipped.ollamaUsed, true);
+
+const detectorSkipped = classifier.mergeDetectorDecision(educationalShort, {
+  status: "ready",
+  synthetic: true,
+  score: 84,
+  reason: "Temporal detector found synthetic video patterns",
+  spatial: { available: true, ai_probability: 0.71 },
+  temporal: { available: true, fake_probability: 0.84 }
+});
+assert.equal(detectorSkipped.recommendation, "skip", "visual synthetic detection must override educational/text protection");
+assert.equal(detectorSkipped.score, 100);
+assert.equal(detectorSkipped.hardAiSynthetic, true);
+assert.equal(detectorSkipped.visualAiSynthetic, true);
+
+const detectorKept = classifier.mergeDetectorDecision(ollamaSkipped, {
+  status: "ready",
+  synthetic: false,
+  score: 18,
+  reason: "No strong synthetic-media signal",
+  spatial: { available: true, ai_probability: 0.15 },
+  temporal: { available: true, fake_probability: 0.2 }
+});
+assert.equal(detectorKept.recommendation, "skip", "visual detector must not veto an Ollama slop verdict");
+assert.equal(detectorKept.detectorUsed, true);
+
+const detectorPending = classifier.mergeDetectorDecision(normalPersonalShort, { status: "pending" });
+assert.equal(detectorPending.recommendation, "watch");
+assert.equal(detectorPending.detectorStatus, "pending");
+
+const parsedInstagram = classifier.parsePlatformUrl("https://www.instagram.com/reel/C123abc/", "instagram");
+const parsedTikTok = classifier.parsePlatformUrl("https://www.tiktok.com/@person/video/741234567890", "tiktok");
+assert.equal(parsedInstagram.itemId, "C123abc");
+assert.equal(parsedInstagram.itemKind, "short");
+assert.equal(parsedTikTok.itemId, "741234567890");
+
+const core = createCoreRuntime(controlCoreSource);
+const cache = core.createDecisionCache({ limit: 2 });
+cache.set("youtube:a", obviousSlop);
+assert.equal(cache.get("youtube:a").recommendation, "skip");
+cache.allow("youtube:a");
+assert.equal(cache.get("youtube:a"), null);
+assert.equal(cache.isAllowed("youtube:a"), true);
+
+assert.ok(contentSource.includes("LOOKAHEAD_LIMIT = 10"));
+assert.ok(contentSource.includes("decisionCache.get"));
+assert.ok(contentSource.includes("DETECTOR_STATUS_KEY"));
+assert.ok(contentSource.includes("mediaUrl"));
+assert.ok(contentSource.includes("orislop-skip-hidden"));
+assert.ok(contentSource.includes("Don't skip"));
+assert.ok(contentSource.includes("Instagram".toLowerCase()) || contentSource.includes('platform === "instagram"'));
+assert.ok(contentSource.includes('platform === "tiktok"'));
+assert.ok(!contentSource.includes("WheelEvent"));
+assert.ok(!contentSource.includes("PageDown"));
+assert.ok(!contentSource.includes("ArrowDown"));
+assert.ok(!contentSource.includes("scrollIntoView"));
+assert.ok(!contentSource.includes("attemptAutoSkip"));
+assert.ok(!contentSource.includes("questionable"));
+assert.ok(!contentSource.includes("ollamaEnabled"));
+
+assert.ok(styles.includes(".orislop-decision-cover"));
+assert.ok(styles.includes("position: absolute"));
+assert.ok(styles.includes("inset: 0"));
+assert.ok(!styles.includes("position: fixed"), "the yellow cover must never cover the viewport");
+
+assert.ok(background.includes('http://127.0.0.1:11434'));
+assert.ok(background.includes('http://127.0.0.1:4317'));
+assert.ok(background.includes('mergeDetectorDecision'));
+assert.ok(background.includes("format: schema"));
+assert.ok(background.includes("temperature: 0"));
+assert.ok(background.includes("dont_skip"));
+assert.ok(background.includes("required Orislop classifier"));
+assert.ok(!/https:\/\//.test(background), "background must not call any remote HTTPS API");
+
+assert.ok(popupHtml.includes("Don't skip"));
+assert.ok(popupHtml.includes("Skip"));
+assert.ok(popupHtml.includes("hideSkippedToggle"));
+assert.ok(popupHtml.includes("Local engines required"));
+assert.ok(popupHtml.includes("gonnerthetooner/orislop-fusion"));
 assert.ok(popupHtml.includes("deepfake-temporal-moe"));
+assert.ok(popupHtml.includes("testDetectorButton"));
+assert.ok(!popupHtml.includes("ollamaToggle"));
+assert.ok(popupHtml.includes("qwen2.5:1.5b-instruct"));
+assert.ok(!popupHtml.toLowerCase().includes("questionable"));
+assert.ok(!popupHtml.includes("autoSkipToggle"));
+assert.ok(!popupJs.includes("chrome.permissions.request"));
 
-const popupJs = readFileSync(path.join(distRoot, "popup.js"), "utf8");
-assert.doesNotThrow(() => new Function(popupJs), "popup script should parse as JavaScript");
-assert.ok(popupJs.includes("orislop.extension.skippedLog"));
-assert.ok(popupJs.includes("orislop.extension.settings"));
-assert.ok(popupJs.includes("hideBotComments"));
-assert.ok(popupJs.includes("advancedDetection"));
-assert.ok(popupJs.includes("createStorageAdapter"));
-assert.ok(popupJs.includes("localStorage"));
-assert.ok(popupJs.includes("renderFlaggedList"));
-assert.ok(popupJs.includes("PREVIEW_FLAGGED_SAMPLE"));
-assert.ok(popupJs.includes("PREVIEW_SKIPPED_SAMPLE"));
-assert.ok(popupJs.includes("setToggleState"));
-assert.ok(popupJs.includes("aria-checked"));
-assert.ok(popupJs.includes("requestClear"));
-assert.ok(popupJs.includes("confirmClear"));
-assert.ok(popupJs.includes("setStatus"));
-
-const popupCss = readFileSync(path.join(distRoot, "popup.css"), "utf8");
-assert.ok(popupCss.includes(":focus-visible"));
-assert.ok(popupCss.includes(":focus-within"));
-
-const releaseInfo = JSON.parse(readFileSync(path.join(distRoot, "release-info.json"), "utf8"));
-assert.equal(releaseInfo.version, "0.2.0");
-assert.ok(releaseInfo.requiredQaFixes.includes("manifest declares 16/32/48/128/256 icons"));
-assert.ok(releaseInfo.requiredQaFixes.includes("only Skip-rated current videos auto-skip, and only after the user enables auto-skip"));
-assert.ok(releaseInfo.requiredQaFixes.includes("Questionable videos are marked for review and are never auto-skipped"));
-assert.ok(releaseInfo.requiredQaFixes.includes("AI/synthetic disclosures contribute to local scoring without bypassing user controls"));
-assert.ok(releaseInfo.requiredQaFixes.includes("first-run auto-skip and bot-comment hiding are off"));
-assert.ok(releaseInfo.requiredQaFixes.includes("visible worker/debug status pill is removed"));
-assert.ok(releaseInfo.requiredQaFixes.includes("warning UI renders as a side overlay instead of a top banner"));
-assert.ok(releaseInfo.requiredQaFixes.includes("scan loop is throttled and uses IntersectionObserver when available"));
-assert.ok(releaseInfo.requiredQaFixes.includes("popup switches expose aria-checked state and keyboard focus styling"));
-assert.ok(releaseInfo.requiredQaFixes.includes("Orislop AI Classifier v1 runs locally over visible text and metadata"));
-assert.ok(releaseInfo.requiredQaFixes.includes("content and background scoring load the canonical generated AI model artifact"));
-assert.ok(releaseInfo.requiredQaFixes.includes("missing generated AI model uses an honest heuristic-only fallback"));
-assert.ok(releaseInfo.requiredQaFixes.includes("advanced detector escalation flag exists and remains off by default"));
+const releaseInfo = readJson("release-info.json");
+assert.equal(releaseInfo.version, "0.4.0");
+assert.ok(releaseInfo.requiredQaFixes.some((item) => item.includes("exactly 10")));
+assert.ok(releaseInfo.requiredQaFixes.some((item) => item.includes("never emits scroll")));
+assert.ok(releaseInfo.requiredQaFixes.some((item) => item.includes("required Ollama classifier")));
+assert.ok(releaseInfo.requiredQaFixes.some((item) => item.includes("100/100 Skip")));
+assert.ok(releaseInfo.requiredQaFixes.some((item) => item.includes("orislop-fusion")));
+assert.ok(releaseInfo.requiredQaFixes.some((item) => item.includes("deepfake-temporal-moe")));
 
 console.log("extension checks passed");
 
-function createContentScriptRuntime({ generatedAiModel, contentScript }) {
-  const context = vm.createContext({
-    URL,
-    console,
-    navigator: { hardwareConcurrency: 4 },
-    __ORISLOP_TEST__: true
-  });
+function read(file) {
+  return readFileSync(path.join(distRoot, file), "utf8");
+}
+
+function readJson(file) {
+  return JSON.parse(read(file));
+}
+
+function createClassifierRuntime(modelSource, source) {
+  const context = vm.createContext({ URL, console });
   context.globalThis = context;
-  if (generatedAiModel) {
-    vm.runInContext(generatedAiModel, context, { filename: "aiClassifierModel.generated.js" });
-  }
-  vm.runInContext(contentScript, context, { filename: "contentScript.js" });
-  return context.__ORISLOP_EXTENSION_TEST_API__;
+  vm.runInContext(modelSource, context, { filename: "aiClassifierModel.generated.js" });
+  vm.runInContext(source, context, { filename: "classifier.js" });
+  return context.OrislopClassifier;
+}
+
+function createCoreRuntime(source) {
+  const context = vm.createContext({ console, setTimeout, clearTimeout });
+  context.globalThis = context;
+  vm.runInContext(source, context, { filename: "controlCore.js" });
+  return context.OrislopExtensionCore;
 }

@@ -6,8 +6,8 @@ Orislop combines multiple evidence sources without hiding what ran. The UI and l
 
 - heuristic evidence
 - lightweight AI text/metadata classifier evidence
-- optional transcript evidence
-- optional spatiotemporal/video evidence
+- required Ollama transcript/metadata evidence in the extension
+- required spatial and temporal video evidence through the extension companion
 
 If a detector is unavailable or not wired into the active product path, Orislop reports that plainly.
 
@@ -27,15 +27,16 @@ The classifier artifact is trained from text and metadata only. Heuristic score 
 
 ## Current Browser Extension Path
 
-The extension runs locally on YouTube pages:
+Extension 0.4.0 runs on YouTube, Instagram Reels, and TikTok:
 
 1. `apps/extension/src/contentScript.js` extracts visible card/current-video metadata.
-2. It extracts title, URL/video ID, visible text, channel name where visible, duration where visible, and visible AI/synthetic disclosure text.
-3. It scores up to the next 10 visible candidates with heuristic rules plus the generated Orislop AI Classifier v1 artifact loaded before the content script.
-4. `apps/extension/src/background.js` mirrors the same scoring path for the batch fallback.
-5. Skip/current-warning behavior remains controlled by extension settings.
+2. It extracts the item URL/ID, visible metadata/transcript, and a direct approved CDN URL when the page exposes one.
+3. It scores up to the next 10 candidates with heuristics and Orislop AI Classifier v1.
+4. `apps/extension/src/background.js` sends every non-hard-AI item to required Ollama and the loopback detector bridge.
+5. The bridge runs `gonnerthetooner/orislop-fusion` plus `gonnerthetooner/deepfake-temporal-moe`, queues uncached visual scans, and returns spatial and temporal probabilities.
+6. Skip hides future feed items; it never scrolls or navigates to the next item.
 
-The generated artifact is also imported by the extension service worker before background scoring starts. If that artifact is missing or invalid, both paths report `aiClassifierUsed: false`, return a null AI source score, and reassign the unavailable source weight to explainable heuristic evidence. The extension does not download videos, inspect video pixels, run PyTorch, or call remote APIs.
+The Chrome process does not execute PyTorch. The required companion binds to `127.0.0.1:4317`, may download supported media into a temporary directory, deletes it after inference, and keeps only an in-memory decision cache. The browser service worker calls no remote HTTPS APIs; public model weights are downloaded by the companion during local setup/use.
 
 ## Combined Score Formula
 
@@ -51,33 +52,15 @@ finalScore =
 
 If transcript is missing, its weight is assigned to the heuristic score. If the AI classifier is unavailable, its weight is assigned to the heuristic score. Channel risk remains lightweight and low-weight.
 
-With a real spatiotemporal score available later:
-
-```text
-finalScore =
-  0.25 * heuristicScore
-  0.35 * aiClassifierScore
-  0.15 * transcriptScore
-  0.25 * spatiotemporalScore
-```
-
-The public web and extension paths currently set `spatiotemporalUsed: false`.
+The extension uses binary decision fusion instead of the static website formula. Ollama determines Skip/Don't skip for slop. A visual synthetic result overrides either text verdict and sets the final score to 100. A visual real result never vetoes an Ollama Skip.
 
 ## Verdict Thresholds
 
-- `Watch`: 0-29
-- `Questionable`: 30-59
-- `Skip`: 60-100
+- `Don't skip`: keep the item visible.
+- `Skip`: hide the item or cover the current media surface.
 
-The extension preserves a hard Skip for visible YouTube AI/synthetic disclosure text.
+Explicit AI/synthetic disclosure text and strong spatial/temporal synthetic results are non-vetoable 100/100 Skip decisions. Thresholds are versioned in `configs/detector_thresholds.json`.
 
 ## Spatiotemporal Detector Status
 
-Local inference adapters exist in `packages/local-inference/src/adapters/`, but they are not called by the static website or browser extension. They remain optional and unavailable-safe. A future local companion app could call them only when:
-
-- metadata/text confidence is low,
-- the item is already suspicious,
-- transcript/metadata is missing,
-- or advanced detection is enabled.
-
-The extension includes an `advancedDetection` setting flag for future escalation. It is off by default and does not run any heavy detector in the current build.
+The static website still reports spatiotemporal inference as unavailable. The extension requires the separate companion and reports `pending`, `available`, or `unavailable` in its popup. Unavailable models fail open so a missing local service cannot hide normal content.
