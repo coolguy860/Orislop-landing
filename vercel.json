@@ -1,5 +1,12 @@
 {
   "buildCommand": "pnpm run web:build",
   "outputDirectory": "apps/web/dist",
-  "framework": null
+  "framework": null,
+  "functions": { "api/index.py": { "maxDuration": 300 } },
+  "rewrites": [
+    { "source": "/health", "destination": "/api/health" },
+    { "source": "/healthz", "destination": "/api/healthz" },
+    { "source": "/ready", "destination": "/api/ready" },
+    { "source": "/v2/:path*", "destination": "/api/v2/:path*" }
+  ]
 }

@@ -4,6 +4,8 @@ Orislop is a static web demo plus a Manifest V3 browser-extension prototype for 
 
 This repo also contains earlier Electron, storage, slop-engine, and local-inference prototype packages. The public static web build does not run Electron, Python, PyTorch, local checkpoints, or secret API keys.
 
+The optional production CPU gateway is deployed separately as the Vercel Python ASGI function in `api/`; it forwards authenticated extension requests to Vast Serverless and does not run models. See [the gateway deployment guide](docs/VERCEL_GATEWAY.md).
+
 ## Prerequisites
 
 - Node.js 22 or newer
