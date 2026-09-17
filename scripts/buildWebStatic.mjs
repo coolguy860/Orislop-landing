@@ -21,7 +21,10 @@ rmSync(distRoot, { recursive: true, force: true });
 mkdirSync(assetRoot, { recursive: true });
 mkdirSync(downloadsRoot, { recursive: true });
 
-execFileSync(process.execPath, [path.join(repoRoot, "scripts", "syncAiClassifierArtifacts.mjs"), "--check"], {
+// Recreate derived classifier sources in the build environment. Exact floating-point
+// serialization can differ between Node patch releases, so a source checkout that
+// passes locally may otherwise fail on Vercel before TypeScript compilation.
+execFileSync(process.execPath, [path.join(repoRoot, "scripts", "syncAiClassifierArtifacts.mjs")], {
   cwd: repoRoot,
   stdio: "inherit"
 });

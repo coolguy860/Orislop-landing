@@ -16,3 +16,5 @@ out/
 __pycache__/
 .cache/
 .DS_Store
+.vercel
+.env*
