@@ -2,7 +2,7 @@
 
 `api/index.py` is a Vercel ASGI gateway. It contains no model weights or inference logic. Requests from the exact configured Chrome-extension origins are authenticated against the shared PostgreSQL beta store, checked against account quotas, local rate/concurrency/duration/body limits, and then forwarded to Vast Serverless as a header-filtered, base64-encoded envelope. The GPU worker is the only component that handles model data or inference.
 
-The checked-in Vercel rewrites map the public `/health`, `/ready`, and `/v2/*` contract to Vercel's `/api/*` function mount. The application removes that internal prefix before authorization and Vast forwarding, so the worker continues to receive the canonical `/v2/*` path.
+The checked-in Vercel rewrites map the public `/health`, `/ready`, and `/v2/*` contract to the single Python function mounted at `/api`. A private rewrite query parameter carries the original public path; the application validates and removes it before authorization and Vast forwarding, so the worker continues to receive only the canonical `/v2/*` path.
 
 ## Deploy setup
 

@@ -17,7 +17,7 @@ import re
 import threading
 import time
 from typing import Any, Protocol
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -36,6 +36,7 @@ VAST_POST_ROUTES = frozenset({"/v2/media-upload", "/v2/analyze", "/v2/analyze/ba
 ANALYSIS_RESULT_PATH = re.compile(r"/v2/analyze/[A-Za-z0-9_-]{1,160}\Z")
 SUPPORTED_ANALYSIS_PLATFORMS = frozenset({"youtube"})
 DIRECT_MEDIA_HOST_SUFFIXES = (".googlevideo.com",)
+VERCEL_PUBLIC_PATH_QUERY = "__orislop_path"
 
 
 def _env_int(name: str, default: int, minimum: int = 1) -> int:
@@ -252,11 +253,31 @@ async def auth_services(request: Request) -> Any:
 
 
 def gateway_path(request: Request) -> str:
-    """Translate Vercel's `/api/*` function mount back to the public contract."""
+    """Translate Vercel's single `/api` function mount to the public contract."""
+    rewritten = request.query_params.getlist(VERCEL_PUBLIC_PATH_QUERY)
+    if rewritten:
+        path = str(rewritten[-1]).strip()
+        if (
+            len(rewritten) != 1
+            or len(path) > 512
+            or not path.startswith("/")
+            or any(marker in path for marker in ("\\", "?", "#"))
+        ):
+            return "/__invalid_vercel_route__"
+        return path
     path = request.url.path
     if path == "/api":
         return "/"
     return path[4:] if path.startswith("/api/") else path
+
+
+def gateway_query(request: Request) -> str:
+    """Remove Vercel's private routing parameter before forwarding to Vast."""
+    return urlencode([
+        (name, value)
+        for name, value in request.query_params.multi_items()
+        if name != VERCEL_PUBLIC_PATH_QUERY
+    ])
 
 
 async def endpoint(request: Request) -> Response:
@@ -303,7 +324,8 @@ async def endpoint(request: Request) -> Response:
                 if not guards.analysis(ip, user_id, units): return json_response({"ok": False, "error": "Analysis budget exceeded; retry in one minute"}, 429, {**headers, "Retry-After": "60"})
                 quota = await asyncio.to_thread(services.quota.status, user_id)
                 if int(quota.get("minuteRemaining", 0)) < count or int(quota.get("dayRemaining", 0)) < count: return json_response({"ok": False, "error": "Candidate quota exceeded"}, 429, {**headers, "Retry-After": "60"})
-            envelope = make_envelope(request.method, path + (f"?{request.url.query}" if request.url.query else ""), request.headers, body)
+            query = gateway_query(request)
+            envelope = make_envelope(request.method, path + (f"?{query}" if query else ""), request.headers, body)
             timeout = min(58.0, config.request_timeout_seconds) if path == "/v2/media-upload" else config.request_timeout_seconds
             result = await asyncio.wait_for(request.app.state.vast.invoke(envelope, timeout), timeout + .5)
             status, worker_headers, response_body = unwrap_worker_response(result)

@@ -4,9 +4,9 @@
   "framework": null,
   "functions": { "api/index.py": { "maxDuration": 300 } },
   "rewrites": [
-    { "source": "/health", "destination": "/api/health" },
-    { "source": "/healthz", "destination": "/api/healthz" },
-    { "source": "/ready", "destination": "/api/ready" },
-    { "source": "/v2/:path*", "destination": "/api/v2/:path*" }
+    { "source": "/health", "destination": "/api?__orislop_path=/health" },
+    { "source": "/healthz", "destination": "/api?__orislop_path=/healthz" },
+    { "source": "/ready", "destination": "/api?__orislop_path=/ready" },
+    { "source": "/v2/:path*", "destination": "/api?__orislop_path=/v2/:path*" }
   ]
 }

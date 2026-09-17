@@ -76,4 +76,24 @@ class GatewayContractTests(unittest.TestCase):
         self.assertNotIn("x-forwarded-for", vast.invocations[0]["headers"])
         self.assertEqual(vast.invocations[0]["path"], "/v2/analyze")
 
+    def test_vercel_single_function_rewrite_restores_public_path(self):
+        vast = FakeVast()
+        app = create_app(self.config, auth_services=FakeServices(), vast_client=vast)
+        candidate = {"platform": "youtube", "itemIdentifier": "abc", "directMediaUrl": "https://r1---sn.googlevideo.com/videoplayback", "duration": 60}
+        with TestClient(app) as client:
+            health = client.get(
+                "/api?__orislop_path=%2Fhealth",
+                headers={"Origin": ORIGIN},
+            )
+            accepted = client.post(
+                "/api?__orislop_path=%2Fv2%2Fanalyze&poll=1",
+                headers={"Origin": ORIGIN, "Authorization": "Bearer valid"},
+                json=candidate,
+            )
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.headers["access-control-allow-origin"], ORIGIN)
+        self.assertEqual(accepted.status_code, 200)
+        self.assertEqual(vast.invocations[0]["path"], "/v2/analyze?poll=1")
+        self.assertNotIn("__orislop_path", vast.invocations[0]["path"])
+
 if __name__ == "__main__": unittest.main()
