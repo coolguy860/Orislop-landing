@@ -26,6 +26,7 @@ from starlette.routing import Route
 
 from .cloud_beta import AuthError, AuthManager, CandidateQuota, GoogleOidc, PostgresBetaStore, RolloutGuard, public_user
 from .contracts import make_envelope, request_cost, unwrap_worker_response
+from .rate_limit import SharedRateLimiter
 
 
 WORKER_ROUTE = "/orislop/v1/invoke"
@@ -37,6 +38,8 @@ ANALYSIS_RESULT_PATH = re.compile(r"/v2/analyze/[A-Za-z0-9_-]{1,160}\Z")
 SUPPORTED_ANALYSIS_PLATFORMS = frozenset({"youtube"})
 DIRECT_MEDIA_HOST_SUFFIXES = (".googlevideo.com",)
 VERCEL_PUBLIC_PATH_QUERY = "__orislop_path"
+SHARED_LIMITER_MAX_IN_FLIGHT = 8
+SHARED_LIMITER_ADMISSION_TIMEOUT_SECONDS = 0.1
 
 
 def _env_int(name: str, default: int, minimum: int = 1) -> int:
@@ -100,9 +103,10 @@ class GatewayConfig:
 
 
 class GatewayAuthServices:
-    def __init__(self, store: Any, auth: Any) -> None:
+    def __init__(self, store: Any, auth: Any, rate_limit: SharedRateLimiter) -> None:
         self.store, self.auth = store, auth
         self.quota, self.guard = CandidateQuota(store), RolloutGuard(store)
+        self.rate_limit = rate_limit
 
     @classmethod
     def from_environment(cls, origins: frozenset[str]) -> "GatewayAuthServices":
@@ -113,7 +117,11 @@ class GatewayAuthServices:
         if not extension_ids:
             raise RuntimeError("No valid Chrome extension ID is configured")
         store = PostgresBetaStore(database_url)
-        return cls(store, AuthManager(store, GoogleOidc(client_id, allowed_extension_ids=extension_ids), secret))
+        return cls(
+            store,
+            AuthManager(store, GoogleOidc(client_id, allowed_extension_ids=extension_ids), secret),
+            SharedRateLimiter(store, secret),
+        )
 
 
 class SlidingWindowLimiter:
@@ -165,6 +173,38 @@ class GatewayGuards:
         try: yield acquired
         finally:
             if acquired: self.route_concurrency.release(ip, user)
+
+
+async def shared_limit(
+    request: Request,
+    services: Any,
+    policy: str,
+    limits: tuple[tuple[str, str, int], ...],
+    cost: int = 1,
+) -> bool:
+    """Run the shared PostgreSQL limiter without blocking the ASGI loop.
+
+    Exceptions intentionally propagate. Authentication and Vast-backed routes
+    fail closed with the endpoint's ordinary 503 response when Neon is down;
+    no billable worker request is made without a successful shared decision.
+    """
+    admission = request.app.state.rate_limit_admission
+    try:
+        await asyncio.wait_for(
+            admission.acquire(),
+            SHARED_LIMITER_ADMISSION_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as error:
+        raise RuntimeError("Shared rate limiter is busy") from error
+    try:
+        return await asyncio.to_thread(
+            services.rate_limit.allow,
+            policy,
+            limits,
+            cost,
+        )
+    finally:
+        admission.release()
 
 
 class VastEndpointClient:
@@ -293,7 +333,8 @@ async def endpoint(request: Request) -> Response:
     try:
         if path in {"/v2/auth/google", "/v2/auth/refresh"} and request.method == "POST":
             services = await auth_services(request)
-            if not guards.auth(ip): return json_response({"ok": False, "error": "Authentication rate limit exceeded; retry in one minute"}, 429, {**headers, "Retry-After": "60"})
+            allowed = guards.auth(ip) and await shared_limit(request, services, "auth", (("global", "all", config.auth_global_per_minute), ("ip", ip, config.auth_ip_per_minute)))
+            if not allowed: return json_response({"ok": False, "error": "Authentication rate limit exceeded; retry in one minute"}, 429, {**headers, "Retry-After": "60"})
             async with guards.auth_slot(ip) as acquired:
                 if not acquired: return json_response({"ok": False, "error": "Authentication is busy; retry shortly"}, 429, {**headers, "Retry-After": "1"})
                 body = json_body(await read_body(request, config))
@@ -301,7 +342,8 @@ async def endpoint(request: Request) -> Response:
                 return json_response({"ok": True, **result}, headers=headers)
         if path in {"/v2/me", "/v2/auth/logout"}:
             services = await auth_services(request)
-            if not guards.auth(ip): return json_response({"ok": False, "error": "Account rate limit exceeded; retry in one minute"}, 429, {**headers, "Retry-After": "60"})
+            allowed = guards.auth(ip) and await shared_limit(request, services, "auth", (("global", "all", config.auth_global_per_minute), ("ip", ip, config.auth_ip_per_minute)))
+            if not allowed: return json_response({"ok": False, "error": "Account rate limit exceeded; retry in one minute"}, 429, {**headers, "Retry-After": "60"})
             async with guards.auth_slot(ip) as acquired:
                 if not acquired: return json_response({"ok": False, "error": "Account service is busy; retry shortly"}, 429, {**headers, "Retry-After": "1"})
                 principal, user_id = await authenticate(request), ""
@@ -315,13 +357,15 @@ async def endpoint(request: Request) -> Response:
         services = await auth_services(request)
         principal, user_id = await authenticate(request), ""
         user_id = str(principal["user"]["id"])
-        if not guards.route(ip, user_id): return json_response({"ok": False, "error": "Gateway rate limit exceeded; retry in one minute"}, 429, {**headers, "Retry-After": "60"})
+        route_allowed = guards.route(ip, user_id) and await shared_limit(request, services, "route", (("global", "all", config.route_global_per_minute), ("ip", ip, config.route_ip_per_minute), ("user", user_id, config.route_user_per_minute)))
+        if not route_allowed: return json_response({"ok": False, "error": "Gateway rate limit exceeded; retry in one minute"}, 429, {**headers, "Retry-After": "60"})
         async with guards.route_slot(ip, user_id) as acquired:
             if not acquired: return json_response({"ok": False, "error": "Gateway is busy; retry shortly"}, 429, {**headers, "Retry-After": "1"})
             body = await read_body(request, config, request.method == "POST")
             if path in {"/v2/analyze", "/v2/analyze/batch"}:
                 count, units = validate_analysis(path, json_body(body), config)
-                if not guards.analysis(ip, user_id, units): return json_response({"ok": False, "error": "Analysis budget exceeded; retry in one minute"}, 429, {**headers, "Retry-After": "60"})
+                analysis_allowed = guards.analysis(ip, user_id, units) and await shared_limit(request, services, "analysis", (("global", "all", config.analysis_global_units_per_minute), ("ip", ip, config.analysis_ip_units_per_minute), ("user", user_id, config.analysis_user_units_per_minute)), units)
+                if not analysis_allowed: return json_response({"ok": False, "error": "Analysis budget exceeded; retry in one minute"}, 429, {**headers, "Retry-After": "60"})
                 quota = await asyncio.to_thread(services.quota.status, user_id)
                 if int(quota.get("minuteRemaining", 0)) < count or int(quota.get("dayRemaining", 0)) < count: return json_response({"ok": False, "error": "Candidate quota exceeded"}, 429, {**headers, "Retry-After": "60"})
             query = gateway_query(request)
@@ -345,6 +389,7 @@ def create_app(config: GatewayConfig | None = None, auth_services: Any = None, v
     application.state.config = resolved
     application.state.auth = auth_services if lazy_auth or auth_services is not None else GatewayAuthServices.from_environment(resolved.allowed_origins)
     application.state.auth_lock = asyncio.Lock()
+    application.state.rate_limit_admission = asyncio.Semaphore(SHARED_LIMITER_MAX_IN_FLIGHT)
     application.state.guards, application.state.vast = GatewayGuards(resolved), vast_client or VastEndpointClient(resolved)
     return application
 

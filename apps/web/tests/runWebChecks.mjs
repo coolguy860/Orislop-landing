@@ -201,8 +201,17 @@ assert.ok(appSource.includes("privacy.html"));
 
 const privacySource = readFileSync(privacyPage, "utf8");
 assert.ok(privacySource.includes("Privacy Policy"));
-assert.ok(privacySource.includes("does not upload local video files"));
-assert.ok(privacySource.includes("Clear all local Orislop data"));
+assert.ok(privacySource.includes("videos are not uploaded"));
+assert.ok(privacySource.includes("You can clear local Orislop data"));
+assert.ok(privacySource.includes("https://api.orislop.com"));
+assert.ok(privacySource.includes("Google API Services User Data Policy"));
+assert.ok(privacySource.includes("Limited Use requirements"));
+assert.ok(privacySource.includes("up to 10 minutes"));
+assert.ok(privacySource.includes("Operational analysis and filtering decision records expire after 30 days"));
+assert.ok(privacySource.includes("security/audit records associated with feedback expire after 90 days"));
+assert.ok(privacySource.includes("Google account identifier, email address, and display name"));
+assert.ok(privacySource.includes("temporary public media URL or one-time upload ID"));
+assert.ok(privacySource.includes("Contact"));
 
 const releaseInfo = JSON.parse(readFileSync(releaseInfoPage, "utf8"));
 assert.equal(releaseInfo.releaseId, "orislop-web-local-ai-polish-2026-07-11");

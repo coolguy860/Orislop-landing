@@ -40,6 +40,12 @@ PENDING_ANALYSIS_TTL_SECONDS = min(
     max(int(os.environ.get("ORISLOP_PENDING_ANALYSIS_TTL_SECONDS", "300")), 60),
     900,
 )
+GATEWAY_DB_CONNECT_TIMEOUT_SECONDS = 5
+GATEWAY_DB_STATEMENT_TIMEOUT_MS = 2500
+GATEWAY_DB_LOCK_TIMEOUT_MS = 750
+GATEWAY_RATE_LIMIT_CLEANUP_INTERVAL_SECONDS = 5.0
+GATEWAY_RATE_LIMIT_CLEANUP_BATCH_SIZE = 500
+GATEWAY_SCHEMA_LOCK_KEY = "orislop:postgres-schema:v1"
 SUPPORTED_PLATFORMS = {"youtube", "instagram", "tiktok", "linkedin"}
 
 
@@ -134,7 +140,36 @@ class MemoryBetaStore:
         self.sessions: dict[str, dict[str, Any]] = {}
         self.decisions: dict[str, dict[str, Any]] = {}
         self.feedback: dict[str, dict[str, Any]] = {}
+        self.gateway_rate_limits: dict[str, deque[tuple[float, int]]] = {}
         self.lock = threading.RLock()
+
+    def consume_gateway_rate_limit(
+        self,
+        limits: tuple[tuple[str, int], ...],
+        cost: int,
+    ) -> bool:
+        """Atomically check and consume an exact rolling one-minute budget."""
+        if cost < 1 or not limits or any(not key or limit < 1 for key, limit in limits):
+            raise ValueError("Invalid gateway rate-limit request")
+        now = time.monotonic()
+        normalized: dict[str, int] = {}
+        for key, limit in limits:
+            normalized[key] = min(normalized.get(key, limit), limit)
+        with self.lock:
+            for key in list(self.gateway_rate_limits):
+                events = self.gateway_rate_limits[key]
+                while events and now - events[0][0] >= 60:
+                    events.popleft()
+                if not events:
+                    self.gateway_rate_limits.pop(key, None)
+            if any(
+                sum(event_cost for _, event_cost in self.gateway_rate_limits.get(key, ())) + cost > limit
+                for key, limit in normalized.items()
+            ):
+                return False
+            for key in normalized:
+                self.gateway_rate_limits.setdefault(key, deque()).append((now, cost))
+            return True
 
     def upsert_user(self, google_subject: str, email: str, name: str) -> dict[str, Any]:
         user_id = hashlib.sha256(f"google:{google_subject}".encode()).hexdigest()[:32]
@@ -253,10 +288,29 @@ class PostgresBetaStore(MemoryBetaStore):
             raise RuntimeError("psycopg is required when DATABASE_URL is configured") from error
         self.psycopg = psycopg
         self.database_url = database_url
+        self._gateway_cleanup_lock = threading.Lock()
+        self._gateway_last_cleanup = 0.0
         self._initialize()
 
-    def _connect(self):
-        return self.psycopg.connect(self.database_url)
+    def _connect(self, *, connect_timeout_seconds: int | None = None):
+        if connect_timeout_seconds is None:
+            return self.psycopg.connect(self.database_url)
+        return self.psycopg.connect(
+            self.database_url,
+            connect_timeout=connect_timeout_seconds,
+        )
+
+    def _configure_bounded_transaction(self, connection: Any, cursor: Any) -> None:
+        """Set isolation before the first query and bound all later waits."""
+        connection.isolation_level = self.psycopg.IsolationLevel.READ_COMMITTED
+        cursor.execute(
+            """SELECT set_config('statement_timeout', %s, true),
+                      set_config('lock_timeout', %s, true)""",
+            (
+                f"{GATEWAY_DB_STATEMENT_TIMEOUT_MS}ms",
+                f"{GATEWAY_DB_LOCK_TIMEOUT_MS}ms",
+            ),
+        )
 
     def _initialize(self) -> None:
         statements = """
@@ -296,10 +350,34 @@ class PostgresBetaStore(MemoryBetaStore):
         );
         CREATE INDEX IF NOT EXISTS beta_rollout_events_type_created_idx
           ON beta_rollout_events (event_type, created_at DESC);
+        CREATE TABLE IF NOT EXISTS gateway_rate_limit_events (
+          id BIGSERIAL PRIMARY KEY, key_hash TEXT NOT NULL,
+          request_cost INTEGER NOT NULL CHECK (request_cost > 0),
+          occurred_at TIMESTAMPTZ NOT NULL,
+          expires_at TIMESTAMPTZ NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS gateway_rate_limit_events_key_time_idx
+          ON gateway_rate_limit_events (key_hash, occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS gateway_rate_limit_events_expiry_idx
+          ON gateway_rate_limit_events (expires_at);
         """
-        with self._connect() as connection:
+        with self._connect(
+            connect_timeout_seconds=GATEWAY_DB_CONNECT_TIMEOUT_SECONDS
+        ) as connection:
             with connection.cursor() as cursor:
+                self._configure_bounded_transaction(connection, cursor)
+                cursor.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (GATEWAY_SCHEMA_LOCK_KEY,),
+                )
                 cursor.execute(statements)
+                cursor.execute(
+                    """SELECT to_regclass('gateway_rate_limit_events'),
+                              to_regclass('gateway_rate_limit_events_key_time_idx'),
+                              to_regclass('gateway_rate_limit_events_expiry_idx')"""
+                )
+                if any(value is None for value in cursor.fetchone()):
+                    raise RuntimeError("Gateway rate-limit schema verification failed")
 
     def upsert_user(self, google_subject: str, email: str, name: str) -> dict[str, Any]:
         user_id = hashlib.sha256(f"google:{google_subject}".encode()).hexdigest()[:32]
@@ -312,6 +390,87 @@ class PostgresBetaStore(MemoryBetaStore):
             )
             row = cursor.fetchone()
         return {"id": row[0], "google_subject": row[1], "email": row[2], "name": row[3], "revoked": row[4], "created_at": row[5].isoformat()}
+
+    def consume_gateway_rate_limit(
+        self,
+        limits: tuple[tuple[str, int], ...],
+        cost: int,
+    ) -> bool:
+        """Atomically check and consume all rolling one-minute scopes.
+
+        Transaction-scoped advisory locks serialize the absent-row case as
+        well as existing buckets.  Sorted lock order prevents deadlocks when
+        requests contain overlapping global, IP, and account scopes.
+        """
+        if cost < 1 or not limits or any(not key or limit < 1 for key, limit in limits):
+            raise ValueError("Invalid gateway rate-limit request")
+        normalized: dict[str, int] = {}
+        for key, limit in limits:
+            normalized[key] = min(normalized.get(key, int(limit)), int(limit))
+        keys = sorted(normalized)
+        with self._connect(
+            connect_timeout_seconds=GATEWAY_DB_CONNECT_TIMEOUT_SECONDS
+        ) as connection, connection.cursor() as cursor:
+            self._configure_bounded_transaction(connection, cursor)
+            for key in keys:
+                cursor.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (key,),
+                )
+            cursor.execute("SELECT clock_timestamp()")
+            now = cursor.fetchone()[0]
+            cursor.execute(
+                """SELECT key_hash,coalesce(sum(request_cost),0)
+                FROM gateway_rate_limit_events
+                WHERE occurred_at>%s-interval '60 seconds' AND key_hash=ANY(%s)
+                GROUP BY key_hash""",
+                (now, keys),
+            )
+            counts = {str(key): int(value) for key, value in cursor.fetchall()}
+            if any(counts.get(key, 0) + cost > normalized[key] for key in keys):
+                return False
+            cursor.executemany(
+                """INSERT INTO gateway_rate_limit_events
+                (key_hash,request_cost,occurred_at,expires_at)
+                VALUES (%s,%s,%s,%s+interval '5 minutes')""",
+                [(key, cost, now, now) for key in keys],
+            )
+        self._maybe_cleanup_gateway_rate_limits(now)
+        return True
+
+    def _maybe_cleanup_gateway_rate_limits(self, fixed_now: datetime) -> None:
+        """Best-effort cleanup outside the admission-lock transaction.
+
+        Cleanup is throttled per process and skips rows locked by another
+        cleaner. A cleanup failure never reverses an already committed limiter
+        decision; expired rows remain excluded from admission by occurred_at.
+        """
+        monotonic_now = time.monotonic()
+        with self._gateway_cleanup_lock:
+            if (
+                monotonic_now - self._gateway_last_cleanup
+                < GATEWAY_RATE_LIMIT_CLEANUP_INTERVAL_SECONDS
+            ):
+                return
+            self._gateway_last_cleanup = monotonic_now
+        try:
+            with self._connect(
+                connect_timeout_seconds=GATEWAY_DB_CONNECT_TIMEOUT_SECONDS
+            ) as connection, connection.cursor() as cursor:
+                self._configure_bounded_transaction(connection, cursor)
+                cursor.execute(
+                    """WITH expired AS (
+                      SELECT id FROM gateway_rate_limit_events
+                      WHERE expires_at<=%s ORDER BY expires_at,id
+                      LIMIT %s FOR UPDATE SKIP LOCKED
+                    )
+                    DELETE FROM gateway_rate_limit_events AS events
+                    USING expired WHERE events.id=expired.id""",
+                    (fixed_now, GATEWAY_RATE_LIMIT_CLEANUP_BATCH_SIZE),
+                )
+        except Exception:
+            # Cleanup must not turn an already committed admission into a 503.
+            return
 
     def get_user(self, user_id: str) -> dict[str, Any] | None:
         with self._connect() as connection, connection.cursor() as cursor:

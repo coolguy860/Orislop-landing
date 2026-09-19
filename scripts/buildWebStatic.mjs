@@ -77,7 +77,7 @@ writeFileSync(path.join(distRoot, "privacy.html"), `<!doctype html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Orislop privacy policy for the static web prototype and browser extension." />
+    <meta name="description" content="Orislop privacy policy for the website and YouTube browser extension." />
     <meta name="orislop-release" content="${releaseId}" />
     <title>Orislop Privacy Policy</title>
     <link rel="stylesheet" href="./assets/styles.css" />
@@ -87,34 +87,96 @@ writeFileSync(path.join(distRoot, "privacy.html"), `<!doctype html>
       <section class="panel">
         <p class="eyebrow">Orislop</p>
         <h1>Privacy Policy</h1>
+        <p><strong>Last updated: September 18, 2026</strong></p>
         <p>
-          Orislop's static website and unpacked browser-extension prototype are designed to run locally.
-          The hosted static site does not require an account, does not include a secret YouTube API key,
-          does not scrape comments, and does not upload local video files.
+          This policy explains what the Orislop website and YouTube extension handle. The website demo stays in
+          your browser. The extension stores your preferences and recent activity in Chrome, and sends only the
+          YouTube and account data needed to run signed-in visual checks.
         </p>
-        <h2>Static Website</h2>
+        <h2>The Website</h2>
         <p>
-          The analyzer scores YouTube URLs, optional titles, optional descriptions, and demo feed rows in
-          your browser. Feedback such as Accurate or Wrong is stored in your browser's local storage on
-          your device. The static site does not send those feedback records to an Orislop server.
+          The website does not require an account. YouTube links, titles, descriptions, transcripts, sample-feed
+          rows, local videos, and feedback entered into the website tools are processed in your browser. Local
+          videos are not uploaded. The static site does not send those tool inputs or feedback records to the
+          Orislop API.
         </p>
-        <h2>Browser Extension</h2>
+        <h2>What the Extension Keeps in Chrome</h2>
         <p>
-          The extension stores settings, skipped items, and flagged items in Chrome or Edge extension
-          storage. These records are local to your browser profile. They are used to show counts and recent
-          reasons in the popup.
+          The extension stores whether filtering is on, your 12 filter choices, display and performance settings,
+          account details shown in the popup, authentication tokens, and a recent activity history capped at 300
+          records. An activity record can include a YouTube item ID or derived key, URL, title, score, short reason,
+          duration, timestamp, and whether the item was hidden or shown again. You can clear local Orislop data
+          from the popup.
         </p>
-        <h2>Local Video Demo</h2>
+        <h2>What the Orislop API Receives</h2>
         <p>
-          The optional local video demo samples a file selected from your device with browser video and
-          canvas APIs. It reports simple frame-change, repetition, and pacing metrics locally. It is not the
-          full PyTorch temporal detector and does not upload the selected file.
+          Extension 1.4.0 runs only on YouTube and YouTube Shorts. For a deeper check, it can send the YouTube item
+          identifier, a temporary public media URL or one-time upload ID, duration, playback position, language,
+          lookahead priority, and a small device-capability summary to https://api.orislop.com. Requests use a
+          short-lived signed-in session. No permanent backend secret is stored in the extension.
         </p>
-        <h2>Deleting Data</h2>
         <p>
-          On the website, clear browser site data for the Orislop domain to remove locally stored settings
-          and feedback. In the extension popup, use Clear flagged, Clear skipped, or Clear all local Orislop data
-          to remove extension logs.
+          Orislop does not receive your Google password, browser cookies, private messages, or activity on unrelated
+          sites. This release does not request access to Instagram, TikTok, or LinkedIn.
+        </p>
+        <h2>Account and Service Records</h2>
+        <p>
+          Google sign-in provides a Google account identifier, email address, and display name. Orislop stores these
+          in its account database to identify the account and enforce per-user quotas. It also stores hashed session
+          credentials, quota timestamps, analysis and filtering decisions tied to an HMAC-derived content key, and
+          feedback you choose to send. The raw media URL is not written into the decision table.
+        </p>
+        <h2>How Long Data Is Kept</h2>
+        <ul>
+          <li>Access tokens expire after 15 minutes. Refresh sessions expire after 30 days.</li>
+          <li>Operational analysis and filtering decision records expire after 30 days.</li>
+          <li>Feedback and security/audit records associated with feedback expire after 90 days.</li>
+          <li>Quota timestamps older than two days and service rollout records older than 30 days are removed during later service activity.</li>
+          <li>A fallback media upload can wait in temporary storage for up to 10 minutes. Once attached to a decision, the analysis copy is kept for no more than 60 seconds.</li>
+        </ul>
+        <p>
+          Expired database rows are removed by later service activity, so cleanup may happen after the listed window
+          rather than at the exact second it expires. Session rows remain until account deletion even after the
+          session can no longer be used.
+        </p>
+        <h2>Diagnostic Clips</h2>
+        <p>
+          Ordinary analysis media is not placed in Orislop's diagnostic bucket. If an explicit diagnostic report
+          requests a clip, the service can keep at most eight seconds at 360p, with audio removed and encryption at
+          rest, for seven days. The normal extension feedback flow does not request diagnostic clips.
+        </p>
+        <h2>Service Providers and Security</h2>
+        <p>
+          Production can use Google for sign-in, Cloudflare for HTTPS and tunnel routing, a GPU hosting provider for
+          analysis, Postgres for account and service records, S3-compatible storage for explicitly requested
+          diagnostic clips, and Hugging Face to download private model files during worker setup. Information is
+          encrypted in transit. Cloudflare and hosting providers may keep infrastructure logs under their own
+          settings and policies.
+        </p>
+        <h2>Fact Checking</h2>
+        <p>
+          When source-backed fact checking is configured, the selected service sends a claim search query to Brave
+          Search or Google Fact Check. Provider keys stay on the server. Search results can include source titles,
+          links, snippets, ratings, and an evidence decision. Media, cookies, and browsing credentials are not sent
+          with the search query.
+        </p>
+        <h2>Your Choices and Deletion</h2>
+        <p>
+          Clear local extension records from the popup. Delete your cloud account from the account controls to remove
+          the account and its linked sessions, decisions, feedback, and quota records. Signing out only revokes the
+          current session; it is not account deletion. Clear site data for the Orislop domain to remove website data.
+        </p>
+        <h2>Use and Sharing</h2>
+        <p>
+          Orislop does not sell user data or use it for behavioral advertising. Information received from Chrome APIs
+          is used only to provide and improve Orislop's user-facing filtering features. Orislop's use and transfer of
+          information received from Google APIs follows the Google API Services User Data Policy, including the
+          Limited Use requirements.
+        </p>
+        <h2>Contact</h2>
+        <p>
+          For privacy questions or a deletion request, contact Orislop through the support contact listed in the
+          Chrome Web Store listing for the installed extension.
         </p>
         <h2>Prototype Limitations</h2>
         <p>
